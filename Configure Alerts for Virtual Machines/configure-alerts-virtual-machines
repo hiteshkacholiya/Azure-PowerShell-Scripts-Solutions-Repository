@@ -1,0 +1,72 @@
+<#
+    .DESCRIPTION
+        This script creates & configures the following alerts for input virtual machine list provided:
+        a. Restart alert
+        b. Deallocation alert
+        c. Power Off alert
+        d. CPU Utilization alert
+        e. Disk Space alert
+    .NOTES
+        AUTHOR: 
+        LAST EDIT: Dec 13, 2021
+#>
+
+#Set-ExecutionPolicy -ExecutionPolicy Unrestricted
+## Use this for Automation account only
+<#-- Initialize Connection & Import Modules --#>
+Import-Module -Name Az.Resources
+Import-Module -Name Az.Accounts
+$connectionName = "AzureRunAsConnectionName"
+$WarningPreference = 'SilentlyContinue'
+try
+{
+    # Get the connection "AzureRunAsConnection "
+    $servicePrincipalConnection = Get-AutomationConnection -Name $connectionName      
+    Write-Output $servicePrincipalConnection
+    "Logging in to Azure..."
+    Add-AzAccount `
+        -ServicePrincipal `
+        -TenantId $servicePrincipalConnection.TenantId `
+        -ApplicationId $servicePrincipalConnection.ApplicationId `
+        -CertificateThumbprint $servicePrincipalConnection.CertificateThumbprint 
+}
+catch 
+{
+    if (!$servicePrincipalConnection)
+    {
+        $ErrorMessage = "Connection $connectionName not found."
+        throw $ErrorMessage
+    } 
+    else
+    {
+        Write-Error -Message $_.Exception
+        throw $_.Exception
+    }
+}
+<#-- End Region for Initialize Connection & Import Modules --#>
+
+##Use this for local execution
+#Add-AzAccount
+
+$dateString = (Get-Date).tostring("dd-MMM-yyyy")
+Write-Output "Started Alert Configuration Script at : " (Get-Date).tostring()
+$allSubscriptions = Get-AzSubscription
+
+if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
+{
+    for($iSub=0;$iSub -lt $allSubscriptions.Count;$iSub++)
+    {
+        Select-AzSubscription -SubscriptionId $All_Subscriptions[$iSub].Id
+        $subscriptionName = $All_Subscriptions[$iSub].Name
+        
+        $vms=Get-AzVM
+        if(($vm -ne $null) -and ($vm.Count -gt 0))
+        {
+            foreach($vm in $vms)
+            {
+                $vmName=$vm.Name
+                $resourceGName=$vm.ResourceGroupName
+            }
+        }
+    }
+}
