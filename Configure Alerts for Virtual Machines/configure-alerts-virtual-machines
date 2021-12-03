@@ -18,6 +18,7 @@ Import-Module -Name Az.Resources
 Import-Module -Name Az.Accounts
 $connectionName = "AzureRunAsConnectionName"
 $WarningPreference = 'SilentlyContinue'
+Write-Output "Started Script at : " (Get-Date).tostring()
 try
 {
     # Get the connection "AzureRunAsConnection "
@@ -47,9 +48,33 @@ catch
 
 ##Use this for local execution
 #Add-AzAccount
+Write-Output "Started Creation of Action Group at : " (Get-Date).tostring()
 
-$dateString = (Get-Date).tostring("dd-MMM-yyyy")
-Write-Output "Started Alert Configuration Script at : " (Get-Date).tostring()
+Select-AzSubscription -SubscriptionId "Subscription ID for Azure Monitor"
+
+$receiver = New-AzActionGroupReceiver `
+    -Name "AGR-INFRA-DEV-UKS-LTM-01" `
+    -EmailAddress "Target Email Address or DL"
+
+# Creates a new or updates an existing action group.
+$percentageCPUActionGroup = Set-AzActionGroup `
+    -Name "notify-admins-vm-alert" `
+    -ShortName "AG-INFRA-DEV-UKS-LTM-01" `
+    -ResourceGroupName "Resource Group Name for Azure Monitor" `
+    -Receiver $receiver
+
+#Create Action Group in memory
+$percentageCPUActionGroupID = New-AzActionGroup -ActionGroupId $percentageCPUActionGroup.Id
+
+# Creates a local criteria object that can be used to create a new metric alert
+$percentageCPUCondition = New-AzMetricAlertRuleV2Criteria `
+    -MetricName "Percentage CPU >90" `
+    -TimeAggregation Average `
+    -Operator GreaterThan `
+    -Threshold 0.9
+
+Write-Output "Started Creation of required alert rules at : " (Get-Date).tostring()
+
 $allSubscriptions = Get-AzSubscription
 
 if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
@@ -62,10 +87,24 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
         $vms=Get-AzVM
         if(($vm -ne $null) -and ($vm.Count -gt 0))
         {
+            Write-Output "Started Alert Configuration for " + $vm.Name " + at : " (Get-Date).tostring()
             foreach($vm in $vms)
             {
-                $vmName=$vm.Name
-                $resourceGName=$vm.ResourceGroupName
+                $targetResourceId = (Get-AzResource -Name $vm.Name).ResourceId
+                
+                # Adds or updates a V2 metric-based alert rule for CPU Utilization
+                $windowSize = New-TimeSpan -Minutes 60
+                $frequency = New-TimeSpan -Minutes 60
+                
+                Add-AzMetricAlertRuleV2 `
+                -Name "CPU Utilization more than 90%" `
+                -ResourceGroupName "Azure Monitor Resource Group" `
+                -WindowSize $windowSize `
+                -Frequency $frequency `
+                -TargetResourceId $targetResourceId `
+                -Condition $percentageCPUCondition `
+                -ActionGroup $percentageCPUActionGroupID `
+                -Severity 3
             }
         }
     }
