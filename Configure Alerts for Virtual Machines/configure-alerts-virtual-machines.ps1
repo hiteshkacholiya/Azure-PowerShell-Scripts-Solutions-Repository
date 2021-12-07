@@ -4,16 +4,23 @@
         a. Restart alert
         b. Deallocation alert
         c. Power Off alert
-        d. CPU Utilization alert
-        e. Disk Space alert
     .NOTES
         AUTHOR: 
-        LAST EDIT: Dec 06, 2021
+        LAST EDIT: Dec 07, 2021
+    .EXAMPLE
+        .\configure-alerts-virtual-machines.ps1 -monitorRGName "rg01" -alertEmailAddress "abc.def@xyz.com" -tenantId "your-azuread-tenantid" -targetSubscriptionId "your-target-subscription-id"
 #>
 
-#Set-ExecutionPolicy -ExecutionPolicy Unrestricted
+param 
+(
+    [Parameter(Mandatory=$true)][string]$monitorRGName,
+    [Parameter(Mandatory=$true)][string]$alertEmailAddress,
+    [Parameter(Mandatory=$true)][string]$tenantId,
+    [Parameter(Mandatory=$true)][string]$targetSubscriptionId
+ )
 
-## Use this for Automation account only
+#Set-ExecutionPolicy -ExecutionPolicy Unrestricted
+# Use this for Automation account only
 <#-- Initialize Connection & Import Modules --#>
 Import-Module -Name Az.Resources
 Import-Module -Name Az.Accounts
@@ -23,12 +30,7 @@ $connectionName = "AzureRunAsConnectionName"
 $WarningPreference = 'SilentlyContinue'
 Write-Output "Started Script at : " (Get-Date).tostring()
 
-param 
-(
-    [Parameter(Mandatory=$true)][string]$monitorRGName,
-    [Parameter(Mandatory=$true)][string]$alertEmailAddress
- )
-
+<#
 try
 {
     # Get the connection "AzureRunAsConnection "
@@ -54,19 +56,19 @@ catch
         throw $_.Exception
     }
 }
+#>
 <#-- End Region for Initialize Connection & Import Modules --#>
 
 ##Use this for local execution
 
-#Connect-AzAccount -TenantId "Your-AzureAD-TenantID"
-#Add-AzAccount
+Connect-AzAccount -TenantId $tenantId
 Write-Output "Started Creation of Action Group at : " (Get-Date).tostring()
 
-Select-AzSubscription -Subscription "Your-Target-SubscriptionId"
+Select-AzSubscription -Subscription $targetSubscriptionId
 
 $receiver = New-AzActionGroupReceiver `
     -Name "AGR-INFRA-DEV-UKS-LTM-01" `
-    -EmailAddress "Target-Email-Address"
+    -EmailAddress $alertEmailAddress
 
 # Creates a new or updates an existing action group.
 $notifyAdminsVMAlert = Set-AzActionGroup `
@@ -78,14 +80,13 @@ $notifyAdminsVMAlert = Set-AzActionGroup `
 #Create Action Group in memory
 $notifyAdminsVMAlertActionGroup = New-AzActionGroup -ActionGroupId $notifyAdminsVMAlert.Id
 
-
 Write-Output "Started Creation of rules at : " (Get-Date).ToString()
 
 #Creating Log Activity Alerts for Deallocate & Restart VMs
 $adminCondition = New-AzActivityLogAlertCondition -Field 'category' -Equal 'Administrative'
 $deallocateCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/deallocate/action'
 $restartCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/restart/action'
-$powerOffCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/poweroff/action'
+$powerOffCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/powerOff/action'
 
 # Creates a local criteria object that can be used to create a new metric alert
 $percentageCPUCondition = New-AzMetricAlertRuleV2Criteria `
@@ -100,7 +101,8 @@ $frequency = New-TimeSpan -Minutes 60
 Write-Output "End Creation of rules at : " (Get-Date).ToString()
 
 # Working on LTM UAT And STAGING Subscriptions
-$allSubscriptions = Get-AzSubscription | Where-Object { $_.Name -eq "LTM-UATSUB" -or $_.Name -eq "LTM-STAGINGSUB" }
+#$allSubscriptions = Get-AzSubscription | Where-Object { $_.Name -eq "LTM-UATSUB" -or $_.Name -eq "LTM-STAGINGSUB" }
+$allSubscriptions = Get-AzSubscription
 
 if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
 {
@@ -113,16 +115,33 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
         $vms=Get-AzVM
         if(($vms -ne $null) -and ($vms.Count -gt 0))
         {
-            Write-Output "Started Alert Configuration for " + $vm.Name " + at : " (Get-Date).tostring()
             foreach($vm in $vms)
             {
+                Write-Output "Started Alert Configuration for " $vm.Name " at : " (Get-Date).ToString()
                 $targetResourceId = (Get-AzResource -Name $vm.Name).ResourceId
                 $resourceGroupName = $vm.ResourceGroupName
                 $scope = "/subscriptions/" + $subscriptionId
+
+                # Create VM Deallocated Alert based on Activity Log Signal
+                Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-DEALLOCATE" `
+                -ResourceGroupName $resourceGroupName -Scope $scope `
+                -Action $notifyAdminsVMAlertActionGroup `
+                -Condition $adminCondition, $deallocateCondition -Description "Alert to notify when a virtual machine is deallocated"
+
+                # Create VM Restart Alert based on Activity Log Signal
+                Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-RESTART" `
+                -ResourceGroupName $resourceGroupName -Scope $scope `
+                -Action $notifyAdminsVMAlertActionGroup `
+                -Condition $adminCondition, $restartCondition -Description "Alert to notify when a virtual machine is restarted"
                 
-                # Adds or updates a V2 metric-based alert rule for CPU Utilization
-                
-                Add-AzMetricAlertRuleV2 `
+                # Create VM Power-Off Alert based on Activity Log Signal
+                Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-POWEROFF" `
+                -ResourceGroupName $resourceGroupName -Scope $scope `
+                -Action $notifyAdminsVMAlertActionGroup `
+                -Condition $adminCondition, $powerOffCondition -Description "Alert to notify when a virtual machine has been powered off"
+            
+                # Adds or updates a V2 metric-based alert rule for CPU Utilization             
+                <#Add-AzMetricAlertRuleV2 `
                 -Name "ALERT-CPU-UTILIZATION" `
                 -ResourceGroupName $resourceGroupName `
                 -WindowSize $windowSize `
@@ -130,26 +149,11 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
                 -TargetResourceId $targetResourceId `
                 -Condition $percentageCPUCondition `
                 -ActionGroup $notifyAdminsVMAlertActionGroup `
-                -Severity 2
-
-                #Create VM Deallocated Alert based on Activity Log Signal
-                Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-DEALLOCATED" `
-                -ResourceGroupName $resourceGroupName -Scope $scope `
-                -Action $notifyAdminsVMAlertActionGroup `
-                -Condition $adminCondition, $deallocateCondition -Description "Alert to notify when a virtual machine is deallocated"
-
-                #Create VM Restart Alert based on Activity Log Signal
-                Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-RESTARTED" `
-                -ResourceGroupName $resourceGroupName -Scope $scope `
-                -Action $notifyAdminsVMAlertActionGroup `
-                -Condition $adminCondition, $restartCondition -Description "Alert to notify when a virtual machine is restarted"
-                
-                 #Create VM Power-Off Alert based on Activity Log Signal
-                Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-POWEREDOFF" `
-                -ResourceGroupName $resourceGroupName -Scope $scope `
-                -Action $notifyAdminsVMAlertActionGroup `
-                -Condition $adminCondition, $powerOffCondition -Description "Alert to notify when a virtual machine is powered off"
+                -Severity 2 #>
+                Write-Output "Finished Alert Configuration for " $vm.Name " at : " (Get-Date).ToString()
             }
         }
     }
 }
+
+Write-Output "End of Script at : " (Get-Date).tostring()
