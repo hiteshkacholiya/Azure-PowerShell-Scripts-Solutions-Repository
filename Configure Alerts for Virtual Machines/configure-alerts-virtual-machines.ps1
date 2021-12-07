@@ -8,17 +8,27 @@
         e. Disk Space alert
     .NOTES
         AUTHOR: 
-        LAST EDIT: Dec 13, 2021
+        LAST EDIT: Dec 06, 2021
 #>
 
 #Set-ExecutionPolicy -ExecutionPolicy Unrestricted
+
 ## Use this for Automation account only
 <#-- Initialize Connection & Import Modules --#>
 Import-Module -Name Az.Resources
 Import-Module -Name Az.Accounts
+Import-Module -Name Az.Monitor
+
 $connectionName = "AzureRunAsConnectionName"
 $WarningPreference = 'SilentlyContinue'
 Write-Output "Started Script at : " (Get-Date).tostring()
+
+param 
+(
+    [Parameter(Mandatory=$true)][string]$monitorRGName,
+    [Parameter(Mandatory=$true)][string]$alertEmailAddress
+ )
+
 try
 {
     # Get the connection "AzureRunAsConnection "
@@ -47,33 +57,45 @@ catch
 <#-- End Region for Initialize Connection & Import Modules --#>
 
 ##Use this for local execution
+
+#Connect-AzAccount -TenantId "Your-AzureAD-TenantID"
 #Add-AzAccount
 Write-Output "Started Creation of Action Group at : " (Get-Date).tostring()
 
-Select-AzSubscription -SubscriptionId "Subscription ID for Azure Monitor"
+Select-AzSubscription -Subscription "Your-Target-SubscriptionId"
 
 $receiver = New-AzActionGroupReceiver `
     -Name "AGR-INFRA-DEV-UKS-LTM-01" `
-    -EmailAddress "Target Email Address or DL"
+    -EmailAddress "Target-Email-Address"
 
 # Creates a new or updates an existing action group.
-$percentageCPUActionGroup = Set-AzActionGroup `
+$notifyAdminsVMAlert = Set-AzActionGroup `
     -Name "notify-admins-vm-alert" `
-    -ShortName "AG-INFRA-DEV-UKS-LTM-01" `
-    -ResourceGroupName "Resource Group Name for Azure Monitor" `
-    -Receiver $receiver
+    -ShortName "AG-DEV-01" `
+    -ResourceGroupName $monitorRGName `
+    -Receiver $receiver #12 character limit on the shortname field for action group
 
 #Create Action Group in memory
-$percentageCPUActionGroupID = New-AzActionGroup -ActionGroupId $percentageCPUActionGroup.Id
+$notifyAdminsVMAlertActionGroup = New-AzActionGroup -ActionGroupId $notifyAdminsVMAlert.Id
+
+
+Write-Output "Started Creation of rules at : " (Get-Date).ToString()
+
+#Creating Log Activity Alerts for Deallocate & Restart VMs
+$condition1 = New-AzActivityLogAlertCondition -Field 'category' -Equal 'Administrative'
+$condition2 = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/deallocate/action'
 
 # Creates a local criteria object that can be used to create a new metric alert
 $percentageCPUCondition = New-AzMetricAlertRuleV2Criteria `
-    -MetricName "Percentage CPU >90" `
+    -MetricName "Percentage CPU" `
     -TimeAggregation Average `
     -Operator GreaterThan `
     -Threshold 0.9
 
-Write-Output "Started Creation of required alert rules at : " (Get-Date).tostring()
+$windowSize = New-TimeSpan -Minutes 60
+$frequency = New-TimeSpan -Minutes 60
+
+Write-Output "End Creation of rules at : " (Get-Date).ToString()
 
 $allSubscriptions = Get-AzSubscription
 
@@ -81,30 +103,38 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
 {
     for($iSub=0;$iSub -lt $allSubscriptions.Count;$iSub++)
     {
-        Select-AzSubscription -SubscriptionId $All_Subscriptions[$iSub].Id
-        $subscriptionName = $All_Subscriptions[$iSub].Name
-        
+        Select-AzSubscription -SubscriptionId $allSubscriptions[$iSub].Id
+        $subscriptionName = $allSubscriptions[$iSub].Name
+        $subscriptionId = $allSubscriptions[$iSub].Id
+
         $vms=Get-AzVM
-        if(($vm -ne $null) -and ($vm.Count -gt 0))
+        if(($vms -ne $null) -and ($vms.Count -gt 0))
         {
             Write-Output "Started Alert Configuration for " + $vm.Name " + at : " (Get-Date).tostring()
             foreach($vm in $vms)
             {
                 $targetResourceId = (Get-AzResource -Name $vm.Name).ResourceId
+                $resourceGroupName = $vm.ResourceGroupName
                 
                 # Adds or updates a V2 metric-based alert rule for CPU Utilization
-                $windowSize = New-TimeSpan -Minutes 60
-                $frequency = New-TimeSpan -Minutes 60
                 
                 Add-AzMetricAlertRuleV2 `
-                -Name "CPU Utilization more than 90%" `
-                -ResourceGroupName "Azure Monitor Resource Group" `
+                -Name "CPU-UTIL-GT-90" `
+                -ResourceGroupName $resourceGroupName `
                 -WindowSize $windowSize `
                 -Frequency $frequency `
                 -TargetResourceId $targetResourceId `
                 -Condition $percentageCPUCondition `
-                -ActionGroup $percentageCPUActionGroupID `
-                -Severity 3
+                -ActionGroup $notifyAdminsVMAlertActionGroup `
+                -Severity 2
+
+                $scope = "/subscriptions/" + $subscriptionId
+
+                #Create VM Deallocated Alert based on Activity Log Signal
+                Set-AzActivityLogAlert -Location "Global" -Name "VM-DEALLOCATED" `
+                -ResourceGroupName $resourceGroupName -Scope $scope `
+                -Action $notifyAdminsVMAlertActionGroup `
+                -Condition $condition1, $condition2 -Description "Alert to notify when a virtual machine is deallocated"
             }
         }
     }
