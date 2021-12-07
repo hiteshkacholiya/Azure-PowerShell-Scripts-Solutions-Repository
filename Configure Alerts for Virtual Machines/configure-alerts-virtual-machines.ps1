@@ -85,6 +85,7 @@ Write-Output "Started Creation of rules at : " (Get-Date).ToString()
 $adminCondition = New-AzActivityLogAlertCondition -Field 'category' -Equal 'Administrative'
 $deallocateCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/deallocate/action'
 $restartCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/restart/action'
+$powerOffCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/poweroff/action'
 
 # Creates a local criteria object that can be used to create a new metric alert
 $percentageCPUCondition = New-AzMetricAlertRuleV2Criteria `
@@ -98,7 +99,8 @@ $frequency = New-TimeSpan -Minutes 60
 
 Write-Output "End Creation of rules at : " (Get-Date).ToString()
 
-$allSubscriptions = Get-AzSubscription
+# Working on LTM UAT And STAGING Subscriptions
+$allSubscriptions = Get-AzSubscription | Where-Object { $_.Name -eq "LTM-UATSUB" -or $_.Name -eq "LTM-STAGINGSUB" }
 
 if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
 {
@@ -121,7 +123,7 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
                 # Adds or updates a V2 metric-based alert rule for CPU Utilization
                 
                 Add-AzMetricAlertRuleV2 `
-                -Name "VM-UTILIZATION" `
+                -Name "ALERT-CPU-UTILIZATION" `
                 -ResourceGroupName $resourceGroupName `
                 -WindowSize $windowSize `
                 -Frequency $frequency `
@@ -131,16 +133,22 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
                 -Severity 2
 
                 #Create VM Deallocated Alert based on Activity Log Signal
-                Set-AzActivityLogAlert -Location "Global" -Name "VM-DEALLOCATED" `
+                Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-DEALLOCATED" `
                 -ResourceGroupName $resourceGroupName -Scope $scope `
                 -Action $notifyAdminsVMAlertActionGroup `
                 -Condition $adminCondition, $deallocateCondition -Description "Alert to notify when a virtual machine is deallocated"
 
                 #Create VM Restart Alert based on Activity Log Signal
-                Set-AzActivityLogAlert -Location "Global" -Name "VM-RESTARTED" `
+                Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-RESTARTED" `
                 -ResourceGroupName $resourceGroupName -Scope $scope `
                 -Action $notifyAdminsVMAlertActionGroup `
                 -Condition $adminCondition, $restartCondition -Description "Alert to notify when a virtual machine is restarted"
+                
+                 #Create VM Power-Off Alert based on Activity Log Signal
+                Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-POWEREDOFF" `
+                -ResourceGroupName $resourceGroupName -Scope $scope `
+                -Action $notifyAdminsVMAlertActionGroup `
+                -Condition $adminCondition, $powerOffCondition -Description "Alert to notify when a virtual machine is powered off"
             }
         }
     }
