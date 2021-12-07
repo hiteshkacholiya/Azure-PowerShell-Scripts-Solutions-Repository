@@ -121,7 +121,7 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
                 # Adds or updates a V2 metric-based alert rule for CPU Utilization
                 
                 Add-AzMetricAlertRuleV2 `
-                -Name "CPU-UTIL-GT-90" `
+                -Name "VM-UTILIZATION" `
                 -ResourceGroupName $resourceGroupName `
                 -WindowSize $windowSize `
                 -Frequency $frequency `
