@@ -6,7 +6,7 @@
         c. Power Off alert
     .NOTES
         AUTHOR: 
-        LAST EDIT: Dec 07, 2021
+        LAST EDIT: Dec 09, 2021
     .EXAMPLE
         .\configure-alerts-virtual-machines.ps1 -monitorRGName "rg01" -alertEmailAddress "abc.def@xyz.com" -tenantId "your-azuread-tenantid" -targetSubscriptionId "your-target-subscription-id"
 #>
@@ -66,6 +66,27 @@ Write-Output "Started Creation of Action Group at : " (Get-Date).tostring()
 
 Select-AzSubscription -Subscription $targetSubscriptionId
 
+#Create Log Analytics Workspace if it does not exist
+$location = "uksouth"
+$workspaceName = "LA-INFRA-DEV-UKS-LTM-01"
+try
+{
+   $logAnalyticsWorkspace = Get-AzOperationalInsightsWorkspace -Name $workspaceName -ResourceGroupName $monitorRGName -ErrorAction Stop
+}
+catch
+{
+    $logAnalyticsWorkspace = New-AzOperationalInsightsWorkspace -Location $location -Name $WorkspaceName -Sku standalone -ResourceGroupName $monitorRGName
+    #change SKU based on billing model. For PAYG, only standalone works.
+    #$logAnalyticsWorkspace = New-AzOperationalInsightsWorkspace -Location $location -Name $WorkspaceName -Sku standard -ResourceGroupName $monitorRGName
+}
+
+# Get Log Analytic Workspace Keys
+$logAnalayticKeys = Get-AzOperationalInsightsWorkspaceSharedKey -ResourceGroupName $monitorRGName -Name $logAnalyticsWorkspace.Name
+if($logAnalayticKeys -ne $null)
+{
+    $secondaryKey = $logAnalayticKeys.SecondarySharedKey
+}
+
 $receiver = New-AzActionGroupReceiver `
     -Name "AGR-INFRA-DEV-UKS-LTM-01" `
     -EmailAddress $alertEmailAddress
@@ -86,7 +107,7 @@ Write-Output "Started Creation of rules at : " (Get-Date).ToString()
 $adminCondition = New-AzActivityLogAlertCondition -Field 'category' -Equal 'Administrative'
 $deallocateCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/deallocate/action'
 $restartCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/restart/action'
-$powerOffCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/powerOff/action'
+$powerOffCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Mcrosoft.Compute/virtualMachines/powerOff/action'
 
 # Creates a local criteria object that can be used to create a new metric alert
 $percentageCPUCondition = New-AzMetricAlertRuleV2Criteria `
@@ -117,6 +138,9 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
         {
             foreach($vm in $vms)
             {
+                #Enable VM Insights by installing agent and connecting it to Log Analytics Workspace on VM if not already enabled
+                .\Install-VMInsights.ps1 -WorkspaceRegion $location -WorkspaceId $logAnalyticsWorkspace.CustomerId  -WorkspaceKey $secondaryKey -SubscriptionId $subscriptionId -ResourceGroup $monitorRGName
+                
                 Write-Output "Started Alert Configuration for " $vm.Name " at : " (Get-Date).ToString()
                 $targetResourceId = (Get-AzResource -Name $vm.Name).ResourceId
                 $resourceGroupName = $vm.ResourceGroupName
