@@ -107,7 +107,7 @@ Write-Output "Started Creation of rules at : " (Get-Date).ToString()
 $adminCondition = New-AzActivityLogAlertCondition -Field 'category' -Equal 'Administrative'
 $deallocateCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/deallocate/action'
 $restartCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/restart/action'
-$powerOffCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Mcrosoft.Compute/virtualMachines/powerOff/action'
+$powerOffCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/powerOff/action'
 
 # Creates a local criteria object that can be used to create a new metric alert
 $percentageCPUCondition = New-AzMetricAlertRuleV2Criteria `
@@ -134,12 +134,13 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
         $subscriptionId = $allSubscriptions[$iSub].Id
 
         $vms=Get-AzVM
+
         if(($vms -ne $null) -and ($vms.Count -gt 0))
         {
             foreach($vm in $vms)
             {
                 #Enable VM Insights by installing agent and connecting it to Log Analytics Workspace on VM if not already enabled
-                .\Install-VMInsights.ps1 -WorkspaceRegion $location -WorkspaceId $logAnalyticsWorkspace.CustomerId  -WorkspaceKey $secondaryKey -SubscriptionId $subscriptionId -ResourceGroup $monitorRGName
+                (.\Install-VMInsights.ps1 -WorkspaceRegion $location -WorkspaceId $logAnalyticsWorkspace.CustomerId  -WorkspaceKey $secondaryKey -SubscriptionId $subscriptionId -ResourceGroup $monitorRGName)
                 
                 Write-Output "Started Alert Configuration for " $vm.Name " at : " (Get-Date).ToString()
                 $targetResourceId = (Get-AzResource -Name $vm.Name).ResourceId
@@ -150,13 +151,13 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
                 Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-DEALLOCATE" `
                 -ResourceGroupName $resourceGroupName -Scope $scope `
                 -Action $notifyAdminsVMAlertActionGroup `
-                -Condition $adminCondition, $deallocateCondition -Description "Alert to notify when a virtual machine is deallocated"
+                -Condition $adminCondition, $deallocateCondition -Description "Alert to notify when a virtual machine is deallocated" -ErrorAction Continue
 
                 # Create VM Restart Alert based on Activity Log Signal
                 Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-RESTART" `
                 -ResourceGroupName $resourceGroupName -Scope $scope `
                 -Action $notifyAdminsVMAlertActionGroup `
-                -Condition $adminCondition, $restartCondition -Description "Alert to notify when a virtual machine is restarted"
+                -Condition $adminCondition, $restartCondition -Description "Alert to notify when a virtual machine is restarted" -ErrorAction Continue
                 
                 # Create VM Power-Off Alert based on Activity Log Signal
                 Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-POWEROFF" `
