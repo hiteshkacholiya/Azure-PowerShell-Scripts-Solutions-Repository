@@ -62,9 +62,9 @@ catch
 ##Use this for local execution
 
 Connect-AzAccount -TenantId $tenantId
-Write-Output "Started Creation of Action Group at : " (Get-Date).tostring()
 
 Select-AzSubscription -Subscription $targetSubscriptionId
+Write-Output "Started Log Analytic Workspace Configuration : " (Get-Date).ToString()
 
 #Create Log Analytics Workspace if it does not exist
 $location = "uksouth"
@@ -86,6 +86,51 @@ if($logAnalayticKeys -ne $null)
 {
     $secondaryKey = $logAnalayticKeys.SecondarySharedKey
 }
+
+#Configure Log Analytic Workspace
+
+# List of solutions to enable
+$Solutions = "Security", "Updates", "WinLog", "VMInsights", "InternalWindowsEvent", "SQLAssessment"
+
+# List all solutions and their installation status
+#Get-AzOperationalInsightsIntelligencePack -ResourceGroupName $monitorRGName -Name $logAnalyticsWorkspace.Name
+
+# Enable all solutions of interest
+foreach ($solution in $Solutions) {
+    Set-AzOperationalInsightsIntelligencePack -ResourceGroupName $monitorRGName -Name $logAnalyticsWorkspace.Name -IntelligencePackName $solution -Enabled $true
+}
+
+
+# Enable IIS Log Collection using agent
+Enable-AzOperationalInsightsIISLogCollection -ResourceGroupName $monitorRGName -WorkspaceName $logAnalyticsWorkspace.Name
+
+# Windows Application Events
+New-AzOperationalInsightsWindowsEventDataSource -ResourceGroupName $monitorRGName `
+                                                -WorkspaceName $logAnalyticsWorkspace.Name `
+                                                -EventLogName "Application" `
+                                                -CollectErrors -CollectWarnings `
+                                                -Name "Application Event Log" 
+
+# Windows System Events
+New-AzOperationalInsightsWindowsEventDataSource -ResourceGroupName $monitorRGName `
+                                                -WorkspaceName $logAnalyticsWorkspace.Name `
+                                                -EventLogName "System" `
+                                                -CollectErrors `
+                                                -CollectWarnings `
+                                                -Name "System Event Log"
+                
+# Windows Perf
+New-AzOperationalInsightsWindowsPerformanceCounterDataSource -ResourceGroupName $monitorRGName `
+                                                             -WorkspaceName $logAnalyticsWorkspace.Name `
+                                                             -ObjectName "Memory" `
+                                                             -InstanceName "*" `
+                                                             -CounterName "Available MBytes" `
+                                                             -IntervalSeconds 60 `
+                                                             -Name "Windows Performance Counter" -Force $true
+
+Write-Output "Finished Log Analytic Workspace Configuration : " (Get-Date).ToString()                
+
+Write-Output "Started Creation of Action Group at : " (Get-Date).tostring()
 
 $receiver = New-AzActionGroupReceiver `
     -Name "AGR-INFRA-DEV-UKS-LTM-01" `
@@ -139,9 +184,6 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
         {
             foreach($vm in $vms)
             {
-                #Enable VM Insights by installing agent and connecting it to Log Analytics Workspace on VM if not already enabled
-                (.\Install-VMInsights.ps1 -WorkspaceRegion $location -WorkspaceId $logAnalyticsWorkspace.CustomerId  -WorkspaceKey $secondaryKey -SubscriptionId $subscriptionId -ResourceGroup $monitorRGName)
-                
                 Write-Output "Started Alert Configuration for " $vm.Name " at : " (Get-Date).ToString()
                 $targetResourceId = (Get-AzResource -Name $vm.Name).ResourceId
                 $resourceGroupName = $vm.ResourceGroupName
@@ -164,7 +206,10 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
                 -ResourceGroupName $resourceGroupName -Scope $scope `
                 -Action $notifyAdminsVMAlertActionGroup `
                 -Condition $adminCondition, $powerOffCondition -Description "Alert to notify when a virtual machine has been powered off"
-            
+                
+                #Enable VM Insights by installing agent and connecting it to Log Analytics Workspace on VM if not already enabled
+                #(.\Install-VMInsights.ps1 -WorkspaceRegion $location -WorkspaceId $logAnalyticsWorkspace.CustomerId  -WorkspaceKey $secondaryKey -SubscriptionId $subscriptionId -ResourceGroup $monitorRGName)
+                
                 # Adds or updates a V2 metric-based alert rule for CPU Utilization             
                 <#Add-AzMetricAlertRuleV2 `
                 -Name "ALERT-CPU-UTILIZATION" `
