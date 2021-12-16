@@ -290,7 +290,7 @@ else {
         Write-Output("Current Subscription:")
         $account
         Write-Output("Changing to subscription: $SubscriptionId")
-        Select-AzureRmSubscription -SubscriptionId $SubscriptionId
+        Select-AzSubscription -SubscriptionId $SubscriptionId
     }
 }
 

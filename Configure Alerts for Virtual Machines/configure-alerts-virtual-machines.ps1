@@ -116,7 +116,7 @@ New-AzOperationalInsightsWindowsEventDataSource -ResourceGroupName $monitorRGNam
                                                 -WorkspaceName $logAnalyticsWorkspace.Name `
                                                 -EventLogName "System" `
                                                 -CollectErrors `
-                                                -CollectWarnings `
+                                                -CollectWarnings ` #-CollectInformation : Add this to include ShutDown capture.
                                                 -Name "System Event Log"
                 
 # Windows Perf
@@ -208,7 +208,7 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
                 -Condition $adminCondition, $powerOffCondition -Description "Alert to notify when a virtual machine has been powered off"
                 
                 #Enable VM Insights by installing agent and connecting it to Log Analytics Workspace on VM if not already enabled
-                #(.\Install-VMInsights.ps1 -WorkspaceRegion $location -WorkspaceId $logAnalyticsWorkspace.CustomerId  -WorkspaceKey $secondaryKey -SubscriptionId $subscriptionId -ResourceGroup $monitorRGName)
+                (.\Install-VMInsights.ps1 -WorkspaceRegion $location -WorkspaceId $logAnalyticsWorkspace.CustomerId  -WorkspaceKey $secondaryKey -SubscriptionId $subscriptionId -ResourceGroup $monitorRGName)
                 
                 # Adds or updates a V2 metric-based alert rule for CPU Utilization             
                 <#Add-AzMetricAlertRuleV2 `
@@ -227,3 +227,7 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
 }
 
 Write-Output "End of Script at : " (Get-Date).tostring()
+
+
+#Log Analytic Query to fetch all shutdown events reported
+#Event | where Message has "ShutDown" | distinct Computer, UserName, Message, EventData
