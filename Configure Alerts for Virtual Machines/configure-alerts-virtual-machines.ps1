@@ -63,7 +63,7 @@ catch
 
 Connect-AzAccount -TenantId $tenantId
 
-Select-AzSubscription -Subscription $targetSubscriptionId
+#Select-AzSubscription -Subscription $targetSubscriptionId
 Write-Output "Started Log Analytic Workspace Configuration : " (Get-Date).ToString()
 
 #Create Log Analytics Workspace if it does not exist
@@ -128,6 +128,7 @@ New-AzOperationalInsightsWindowsPerformanceCounterDataSource -ResourceGroupName 
                                                              -IntervalSeconds 60 `
                                                              -Name "Windows Performance Counter" -Force $true
 
+
 Write-Output "Finished Log Analytic Workspace Configuration : " (Get-Date).ToString()                
 
 Write-Output "Started Creation of Action Group at : " (Get-Date).tostring()
@@ -152,7 +153,17 @@ Write-Output "Started Creation of rules at : " (Get-Date).ToString()
 $adminCondition = New-AzActivityLogAlertCondition -Field 'category' -Equal 'Administrative'
 $deallocateCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/deallocate/action'
 $restartCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/restart/action'
-$powerOffCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/powerOff/action'
+#$powerOffCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/powerOff/action'
+
+#Create log search based alert for system shutdown events
+$shutDownQuery = 'Event | where Message has "shutdown" and ParameterXml has "restart" |  project Computer, _ResourceId, UserName, TimeGenerated, Message, EventLog | summarize AggregatedValue= count() by bin(TimeGenerated, 5m)'
+$shutDownQuerySource = New-AzScheduledQueryRuleSource -Query $shutDownQuery -DataSourceId $logAnalyticsWorkspace.ResourceId
+$schedule = New-AzScheduledQueryRuleSchedule -FrequencyInMinutes 5 -TimeWindowInMinutes 30
+$shutDownMetricTrigger = New-AzScheduledQueryRuleLogMetricTrigger -ThresholdOperator GreaterThan -Threshold 0 -MetricTriggerType Total -MetricColumn "null" 
+$shutDownTriggerCondition = New-AzScheduledQueryRuleTriggerCondition -ThresholdOperator GreaterThan -Threshold 0 -MetricTrigger $shutDownMetricTrigger
+$shutDownAlertAznsActionGroup = New-AzScheduledQueryRuleAznsActionGroup -ActionGroup $notifyAdminsVMAlertActionGroup.ActionGroupId -EmailSubject "Alert - Azure Virtual Machine Restarted"
+$shutDownAlertingAction = New-AzScheduledQueryRuleAlertingAction -AznsAction $shutDownAlertAznsActionGroup -Severity 3 -Trigger $shutDownTriggerCondition
+New-AzScheduledQueryRule -Location $location -Action $shutDownAlertingAction -Enabled $true -Description "Azure VM Restart" -Schedule $schedule -Name "Azure VM Restart Alert" -ResourceGroupName $monitorRGName -Source $shutDownQuerySource
 
 # Creates a local criteria object that can be used to create a new metric alert
 $percentageCPUCondition = New-AzMetricAlertRuleV2Criteria `
@@ -202,10 +213,10 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
                 -Condition $adminCondition, $restartCondition -Description "Alert to notify when a virtual machine is restarted" -ErrorAction Continue
                 
                 # Create VM Power-Off Alert based on Activity Log Signal
-                Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-POWEROFF" `
+                <#Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-POWEROFF" `
                 -ResourceGroupName $resourceGroupName -Scope $scope `
                 -Action $notifyAdminsVMAlertActionGroup `
-                -Condition $adminCondition, $powerOffCondition -Description "Alert to notify when a virtual machine has been powered off"
+                -Condition $adminCondition, $powerOffCondition -Description "Alert to notify when a virtual machine has been powered off"#
                 
                 #Enable VM Insights by installing agent and connecting it to Log Analytics Workspace on VM if not already enabled
                 (.\Install-VMInsights.ps1 -WorkspaceRegion $location -WorkspaceId $logAnalyticsWorkspace.CustomerId  -WorkspaceKey $secondaryKey -SubscriptionId $subscriptionId -ResourceGroup $monitorRGName)
