@@ -6,7 +6,7 @@
         c. Power Off alert
     .NOTES
         AUTHOR: 
-        LAST EDIT: Dec 09, 2021
+        LAST EDIT: Dec 25, 2021
     .EXAMPLE
         .\configure-alerts-virtual-machines.ps1 -monitorRGName "rg01" -alertEmailAddress "abc.def@xyz.com" -tenantId "your-azuread-tenantid" -targetSubscriptionId "your-target-subscription-id"
 #>
@@ -90,7 +90,8 @@ if($logAnalayticKeys -ne $null)
 #Configure Log Analytic Workspace
 
 # List of solutions to enable
-$Solutions = "Security", "Updates", "WinLog", "VMInsights", "InternalWindowsEvent", "SQLAssessment"
+#$Solutions = "Security", "Updates", "WinLog", "VMInsights", "InternalWindowsEvent", "SQLAssessment"
+$Solutions = "WinLog", "VMInsights", "InternalWindowsEvent"
 
 # List all solutions and their installation status
 #Get-AzOperationalInsightsIntelligencePack -ResourceGroupName $monitorRGName -Name $logAnalyticsWorkspace.Name
@@ -116,17 +117,18 @@ New-AzOperationalInsightsWindowsEventDataSource -ResourceGroupName $monitorRGNam
                                                 -WorkspaceName $logAnalyticsWorkspace.Name `
                                                 -EventLogName "System" `
                                                 -CollectErrors `
-                                                -CollectWarnings ` #-CollectInformation : Add this to include ShutDown capture.
+                                                -CollectWarnings `
+                                                -CollectInformation `
                                                 -Name "System Event Log"
                 
 # Windows Perf
-New-AzOperationalInsightsWindowsPerformanceCounterDataSource -ResourceGroupName $monitorRGName `
+<#New-AzOperationalInsightsWindowsPerformanceCounterDataSource -ResourceGroupName $monitorRGName `
                                                              -WorkspaceName $logAnalyticsWorkspace.Name `
                                                              -ObjectName "Memory" `
                                                              -InstanceName "*" `
                                                              -CounterName "Available MBytes" `
                                                              -IntervalSeconds 60 `
-                                                             -Name "Windows Performance Counter" -Force $true
+                                                             -Name "Windows Performance Counter" -Force $true #>
 
 
 Write-Output "Finished Log Analytic Workspace Configuration : " (Get-Date).ToString()                
@@ -147,23 +149,25 @@ $notifyAdminsVMAlert = Set-AzActionGroup `
 #Create Action Group in memory
 $notifyAdminsVMAlertActionGroup = New-AzActionGroup -ActionGroupId $notifyAdminsVMAlert.Id
 
-Write-Output "Started Creation of rules at : " (Get-Date).ToString()
+Write-Output "Started Creation of Log Analytic Workspace alerts at : " (Get-Date).ToString()
 
-#Creating Log Activity Alerts for Deallocate & Restart VMs
-$adminCondition = New-AzActivityLogAlertCondition -Field 'category' -Equal 'Administrative'
-$deallocateCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/deallocate/action'
-$restartCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/restart/action'
-#$powerOffCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/powerOff/action'
+#Create log search based alert for system restart events
+$restartQuery = 'Event | where Message has "shutdown" and ParameterXml has "restart" |  project Computer, _ResourceId, UserName, TimeGenerated, Message, EventLog | summarize AggregatedValue= count() by bin(TimeGenerated, 5m)'
+$restartQuerySource = New-AzScheduledQueryRuleSource -Query $restartQuery -DataSourceId $logAnalyticsWorkspace.ResourceId -QueryType ResultCount
+$schedule = New-AzScheduledQueryRuleSchedule -FrequencyInMinutes 5 -TimeWindowInMinutes 5
+#$restartMetricTrigger = New-AzScheduledQueryRuleLogMetricTrigger -ThresholdOperator GreaterThan -Threshold 0 -MetricTriggerType Total -MetricColumn "null"
+$restartTriggerCondition = New-AzScheduledQueryRuleTriggerCondition -ThresholdOperator GreaterThan -Threshold 0
+$restartAlertAznsActionGroup = New-AzScheduledQueryRuleAznsActionGroup -ActionGroup $notifyAdminsVMAlertActionGroup.ActionGroupId -EmailSubject "Alert - Azure Virtual Machine Restarted"
+$restartAlertingAction = New-AzScheduledQueryRuleAlertingAction -AznsAction $restartAlertAznsActionGroup -Severity 3 -Trigger $restartTriggerCondition
+New-AzScheduledQueryRule -Location $location -Action $restartAlertingAction -Enabled $true -Description "ALERT-VM-RESTART-LA" -Schedule $schedule -Name "Azure VM Restart Alert" -ResourceGroupName $monitorRGName -Source $restartQuerySource
 
-#Create log search based alert for system shutdown events
-$shutDownQuery = 'Event | where Message has "shutdown" and ParameterXml has "restart" |  project Computer, _ResourceId, UserName, TimeGenerated, Message, EventLog | summarize AggregatedValue= count() by bin(TimeGenerated, 5m)'
-$shutDownQuerySource = New-AzScheduledQueryRuleSource -Query $shutDownQuery -DataSourceId $logAnalyticsWorkspace.ResourceId
-$schedule = New-AzScheduledQueryRuleSchedule -FrequencyInMinutes 5 -TimeWindowInMinutes 30
-$shutDownMetricTrigger = New-AzScheduledQueryRuleLogMetricTrigger -ThresholdOperator GreaterThan -Threshold 0 -MetricTriggerType Total -MetricColumn "null" 
+#Create log search based alert for system shutdown
+$shutDownQuery = 'Event | where Message has "initiated a shutdown" | summarize Count = count() by bin(TimeGenerated, 5m)'
+$shutDownQuerySource = New-AzScheduledQueryRuleSource -Query $shutDownQuery -DataSourceId $logAnalyticsWorkspace.ResourceId -QueryType ResultCount
 $shutDownTriggerCondition = New-AzScheduledQueryRuleTriggerCondition -ThresholdOperator GreaterThan -Threshold 0 -MetricTrigger $shutDownMetricTrigger
 $shutDownAlertAznsActionGroup = New-AzScheduledQueryRuleAznsActionGroup -ActionGroup $notifyAdminsVMAlertActionGroup.ActionGroupId -EmailSubject "Alert - Azure Virtual Machine Restarted"
 $shutDownAlertingAction = New-AzScheduledQueryRuleAlertingAction -AznsAction $shutDownAlertAznsActionGroup -Severity 3 -Trigger $shutDownTriggerCondition
-New-AzScheduledQueryRule -Location $location -Action $shutDownAlertingAction -Enabled $true -Description "Azure VM Restart" -Schedule $schedule -Name "Azure VM Restart Alert" -ResourceGroupName $monitorRGName -Source $shutDownQuerySource
+New-AzScheduledQueryRule -Location $location -Action $shutDownAlertingAction -Enabled $true -Description "ALERT-VM-SHUTDOWN-LA" -Schedule $schedule -Name "Azure VM ShutDown Alert" -ResourceGroupName $monitorRGName -Source $shutDownQuerySource
 
 # Creates a local criteria object that can be used to create a new metric alert
 $percentageCPUCondition = New-AzMetricAlertRuleV2Criteria `
@@ -175,8 +179,15 @@ $percentageCPUCondition = New-AzMetricAlertRuleV2Criteria `
 $windowSize = New-TimeSpan -Minutes 60
 $frequency = New-TimeSpan -Minutes 60
 
-Write-Output "End Creation of rules at : " (Get-Date).ToString()
+Write-Output "End Creation of Log Analytic Workspace alerts at : " (Get-Date).ToString()
 
+Write-Output "Begin Creation of VM alerts at : " (Get-Date).ToString()
+
+#Creating Log Activity Alerts for Deallocate & Restart VMs
+$adminCondition = New-AzActivityLogAlertCondition -Field 'category' -Equal 'Administrative'
+$deallocateCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/deallocate/action'
+$restartCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/restart/action'
+#$powerOffCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/powerOff/action'
 # Working on LTM UAT And STAGING Subscriptions
 #$allSubscriptions = Get-AzSubscription | Where-Object { $_.Name -eq "LTM-UATSUB" -or $_.Name -eq "LTM-STAGINGSUB" }
 $allSubscriptions = Get-AzSubscription
@@ -188,6 +199,37 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
         Select-AzSubscription -SubscriptionId $allSubscriptions[$iSub].Id
         $subscriptionName = $allSubscriptions[$iSub].Name
         $subscriptionId = $allSubscriptions[$iSub].Id
+        $scope = "/subscriptions/" + $subscriptionId
+
+        # Create VM Power-Off Alert based on Activity Log Signal
+        Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-POWEROFF" `
+        -ResourceGroupName $resourceGroupName -Scope $scope `
+        -Action $notifyAdminsVMAlertActionGroup `
+        -Condition $adminCondition, $powerOffCondition -Description "Alert to notify when a virtual machine has been powered off"
+
+        # Create VM Deallocated Alert based on Activity Log Signal
+        Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-DEALLOCATE" `
+        -ResourceGroupName $resourceGroupName -Scope $scope `
+        -Action $notifyAdminsVMAlertActionGroup `
+        -Condition $adminCondition, $deallocateCondition -Description "Alert to notify when a virtual machine is deallocated" -ErrorAction Continue
+
+
+        # Create VM Restart Alert based on Activity Log Signal
+        Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-RESTART" `
+        -ResourceGroupName $resourceGroupName -Scope $scope `
+        -Action $notifyAdminsVMAlertActionGroup `
+        -Condition $adminCondition, $restartCondition -Description "Alert to notify when a virtual machine is restarted" -ErrorAction Continue
+
+         # Adds or updates a V2 metric-based alert rule for CPU Utilization             
+        <#Add-AzMetricAlertRuleV2 `
+        -Name "ALERT-CPU-UTILIZATION" `
+        -ResourceGroupName $resourceGroupName `
+        -WindowSize $windowSize `
+        -Frequency $frequency `
+        -TargetResourceId $targetResourceId `
+        -Condition $percentageCPUCondition `
+        -ActionGroup $notifyAdminsVMAlertActionGroup `
+        -Severity 2 #>
 
         $vms=Get-AzVM
 
@@ -198,47 +240,16 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
                 Write-Output "Started Alert Configuration for " $vm.Name " at : " (Get-Date).ToString()
                 $targetResourceId = (Get-AzResource -Name $vm.Name).ResourceId
                 $resourceGroupName = $vm.ResourceGroupName
-                $scope = "/subscriptions/" + $subscriptionId
 
-                # Create VM Deallocated Alert based on Activity Log Signal
-                Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-DEALLOCATE" `
-                -ResourceGroupName $resourceGroupName -Scope $scope `
-                -Action $notifyAdminsVMAlertActionGroup `
-                -Condition $adminCondition, $deallocateCondition -Description "Alert to notify when a virtual machine is deallocated" -ErrorAction Continue
-
-                # Create VM Restart Alert based on Activity Log Signal
-                Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-RESTART" `
-                -ResourceGroupName $resourceGroupName -Scope $scope `
-                -Action $notifyAdminsVMAlertActionGroup `
-                -Condition $adminCondition, $restartCondition -Description "Alert to notify when a virtual machine is restarted" -ErrorAction Continue
-                
-                # Create VM Power-Off Alert based on Activity Log Signal
-                <#Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-POWEROFF" `
-                -ResourceGroupName $resourceGroupName -Scope $scope `
-                -Action $notifyAdminsVMAlertActionGroup `
-                -Condition $adminCondition, $powerOffCondition -Description "Alert to notify when a virtual machine has been powered off"#
-                
                 #Enable VM Insights by installing agent and connecting it to Log Analytics Workspace on VM if not already enabled
                 (.\Install-VMInsights.ps1 -WorkspaceRegion $location -WorkspaceId $logAnalyticsWorkspace.CustomerId  -WorkspaceKey $secondaryKey -SubscriptionId $subscriptionId -ResourceGroup $monitorRGName)
-                
-                # Adds or updates a V2 metric-based alert rule for CPU Utilization             
-                <#Add-AzMetricAlertRuleV2 `
-                -Name "ALERT-CPU-UTILIZATION" `
-                -ResourceGroupName $resourceGroupName `
-                -WindowSize $windowSize `
-                -Frequency $frequency `
-                -TargetResourceId $targetResourceId `
-                -Condition $percentageCPUCondition `
-                -ActionGroup $notifyAdminsVMAlertActionGroup `
-                -Severity 2 #>
-                Write-Output "Finished Alert Configuration for " $vm.Name " at : " (Get-Date).ToString()
+               
+                Write-Output "Finished Agent Installation for " $vm.Name " at : " (Get-Date).ToString()
             }
         }
+        
+        Write-Output "End Creation of VM alerts for " $subscriptionName " : " (Get-Date).ToString()
     }
 }
 
-Write-Output "End of Script at : " (Get-Date).tostring()
-
-
-#Log Analytic Query to fetch all shutdown events reported
-#Event | where Message has "ShutDown" | distinct Computer, UserName, Message, EventData
+Write-Output "End of Script at : " (Get-Date).ToString()
