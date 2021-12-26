@@ -8,15 +8,16 @@
         AUTHOR: 
         LAST EDIT: Dec 25, 2021
     .EXAMPLE
-        .\configure-alerts-virtual-machines.ps1 -monitorRGName "rg01" -alertEmailAddress "abc.def@xyz.com" -tenantId "your-azuread-tenantid" -targetSubscriptionId "your-target-subscription-id"
+        .\configure-alerts-virtual-machines.ps1 -monitorRGName "rg01" -tenantId "your-azuread-tenantid" -targetSubscriptionId "your-target-subscription-id" -workspaceName "your-log-analytic-workspace-name" -emailAddressesForAlerts "your-email-array"
 #>
 
 param 
 (
     [Parameter(Mandatory=$true)][string]$monitorRGName,
-    [Parameter(Mandatory=$true)][string]$alertEmailAddress,
     [Parameter(Mandatory=$true)][string]$tenantId,
-    [Parameter(Mandatory=$true)][string]$targetSubscriptionId
+    [Parameter(Mandatory=$true)][string]$targetSubscriptionId,
+    [Parameter(Mandatory=$true)][string]$workspaceName,
+    [Parameter(Mandatory=$true)][string[]]$emailAddressesForAlerts
  )
 
 #Set-ExecutionPolicy -ExecutionPolicy Unrestricted
@@ -68,19 +69,20 @@ Write-Output "Started Log Analytic Workspace Configuration : " (Get-Date).ToStri
 
 #Create Log Analytics Workspace if it does not exist
 $location = "uksouth"
-$workspaceName = "LA-INFRA-DEV-UKS-LTM-01"
+#$workspaceName = "LA-INFRA-DEV-UKS-LTM-01"
 try
 {
    $logAnalyticsWorkspace = Get-AzOperationalInsightsWorkspace -Name $workspaceName -ResourceGroupName $monitorRGName -ErrorAction Stop
 }
 catch
 {
-    $logAnalyticsWorkspace = New-AzOperationalInsightsWorkspace -Location $location -Name $WorkspaceName -Sku standalone -ResourceGroupName $monitorRGName
+    New-AzOperationalInsightsWorkspace -Location $location -Name $workspaceName -Sku standalone -ResourceGroupName $monitorRGName
     #change SKU based on billing model. For PAYG, only standalone works.
     #$logAnalyticsWorkspace = New-AzOperationalInsightsWorkspace -Location $location -Name $WorkspaceName -Sku standard -ResourceGroupName $monitorRGName
 }
 
 # Get Log Analytic Workspace Keys
+$logAnalyticsWorkspace = Get-AzOperationalInsightsWorkspace -Name $workspaceName -ResourceGroupName $monitorRGName -ErrorAction Stop
 $logAnalayticKeys = Get-AzOperationalInsightsWorkspaceSharedKey -ResourceGroupName $monitorRGName -Name $logAnalyticsWorkspace.Name
 if($logAnalayticKeys -ne $null)
 {
@@ -135,16 +137,26 @@ Write-Output "Finished Log Analytic Workspace Configuration : " (Get-Date).ToStr
 
 Write-Output "Started Creation of Action Group at : " (Get-Date).tostring()
 
-$receiver = New-AzActionGroupReceiver `
+$actiongGroupEmailList =@()
+#$emailAddressesForAlerts = @("hitesh.kacholiya@gmail.com","aatifsid07@gmail.com")    
+foreach ($emailAddress in $emailAddressesForAlerts)
+{
+    $userName= $EmailAddress.Split(".")[0]
+    $userActionGroup = New-AzActionGroupReceiver -Name $userName -EmailReceiver -EmailAddress $emailAddress -WarningAction SilentlyContinue
+    $actiongGroupEmailList+=$userActionGroup
+}
+
+
+<#$receiver = New-AzActionGroupReceiver `
     -Name "AGR-INFRA-DEV-UKS-LTM-01" `
-    -EmailAddress $alertEmailAddress
+    -EmailAddress $alertEmailAddress#>
 
 # Creates a new or updates an existing action group.
 $notifyAdminsVMAlert = Set-AzActionGroup `
     -Name "notify-admins-vm-alert" `
     -ShortName "AG-DEV-01" `
     -ResourceGroupName $monitorRGName `
-    -Receiver $receiver #12 character limit on the shortname field for action group
+    -Receiver $actiongGroupEmailList #12 character limit on the shortname field for action group
 
 #Create Action Group in memory
 $notifyAdminsVMAlertActionGroup = New-AzActionGroup -ActionGroupId $notifyAdminsVMAlert.Id
@@ -170,11 +182,11 @@ $shutDownAlertingAction = New-AzScheduledQueryRuleAlertingAction -AznsAction $sh
 New-AzScheduledQueryRule -Location $location -Action $shutDownAlertingAction -Enabled $true -Description "ALERT-VM-SHUTDOWN-LA" -Schedule $schedule -Name "Azure VM ShutDown Alert" -ResourceGroupName $monitorRGName -Source $shutDownQuerySource
 
 # Creates a local criteria object that can be used to create a new metric alert
-$percentageCPUCondition = New-AzMetricAlertRuleV2Criteria `
+<#$percentageCPUCondition = New-AzMetricAlertRuleV2Criteria `
     -MetricName "Percentage CPU" `
     -TimeAggregation Average `
     -Operator GreaterThan `
-    -Threshold 0.9
+    -Threshold 0.9#>
 
 $windowSize = New-TimeSpan -Minutes 60
 $frequency = New-TimeSpan -Minutes 60
@@ -187,7 +199,7 @@ Write-Output "Begin Creation of VM alerts at : " (Get-Date).ToString()
 $adminCondition = New-AzActivityLogAlertCondition -Field 'category' -Equal 'Administrative'
 $deallocateCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/deallocate/action'
 $restartCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/restart/action'
-#$powerOffCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/powerOff/action'
+$powerOffCondition = New-AzActivityLogAlertCondition -Field 'operationName' -Equal 'Microsoft.Compute/virtualMachines/powerOff/action'
 # Working on LTM UAT And STAGING Subscriptions
 #$allSubscriptions = Get-AzSubscription | Where-Object { $_.Name -eq "LTM-UATSUB" -or $_.Name -eq "LTM-STAGINGSUB" }
 $allSubscriptions = Get-AzSubscription
@@ -203,20 +215,20 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
 
         # Create VM Power-Off Alert based on Activity Log Signal
         Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-POWEROFF" `
-        -ResourceGroupName $resourceGroupName -Scope $scope `
+        -ResourceGroupName $monitorRGName -Scope $scope `
         -Action $notifyAdminsVMAlertActionGroup `
         -Condition $adminCondition, $powerOffCondition -Description "Alert to notify when a virtual machine has been powered off"
 
         # Create VM Deallocated Alert based on Activity Log Signal
         Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-DEALLOCATE" `
-        -ResourceGroupName $resourceGroupName -Scope $scope `
+        -ResourceGroupName $monitorRGName -Scope $scope `
         -Action $notifyAdminsVMAlertActionGroup `
         -Condition $adminCondition, $deallocateCondition -Description "Alert to notify when a virtual machine is deallocated" -ErrorAction Continue
 
 
         # Create VM Restart Alert based on Activity Log Signal
         Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-RESTART" `
-        -ResourceGroupName $resourceGroupName -Scope $scope `
+        -ResourceGroupName $monitorRGName -Scope $scope `
         -Action $notifyAdminsVMAlertActionGroup `
         -Condition $adminCondition, $restartCondition -Description "Alert to notify when a virtual machine is restarted" -ErrorAction Continue
 
