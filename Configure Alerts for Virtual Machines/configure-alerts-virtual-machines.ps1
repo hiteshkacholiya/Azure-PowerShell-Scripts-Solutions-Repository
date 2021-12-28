@@ -1,12 +1,12 @@
 <#
     .DESCRIPTION
-        This script creates & configures the following alerts for input virtual machine list provided:
+        This script creates & configures the following alerts for Virtual Machines at both the Log Analytic Workspace level as well as the VM level:
         a. Restart alert
         b. Deallocation alert
         c. Power Off alert
     .NOTES
         AUTHOR: 
-        LAST EDIT: Dec 25, 2021
+        LAST EDIT: Dec 28, 2021
     .EXAMPLE
         .\configure-alerts-virtual-machines.ps1 -monitorRGName "rg01" -tenantId "your-azuread-tenantid" -targetSubscriptionId "your-target-subscription-id" -workspaceName "your-log-analytic-workspace-name" -emailAddressesForAlerts "your-email-array"
 #>
@@ -29,14 +29,14 @@ Import-Module -Name Az.Monitor
 
 $connectionName = "AzureRunAsConnectionName"
 $WarningPreference = 'SilentlyContinue'
-Write-Output "Started Script at : " (Get-Date).tostring()
+Write-Host "Started Script at : " (Get-Date).tostring()
 
 <#
 try
 {
     # Get the connection "AzureRunAsConnection "
     $servicePrincipalConnection = Get-AutomationConnection -Name $connectionName      
-    Write-Output $servicePrincipalConnection
+    Write-Host $servicePrincipalConnection
     "Logging in to Azure..."
     Add-AzAccount `
         -ServicePrincipal `
@@ -65,7 +65,7 @@ catch
 Connect-AzAccount -TenantId $tenantId
 
 #Select-AzSubscription -Subscription $targetSubscriptionId
-Write-Output "Started Log Analytic Workspace Configuration : " (Get-Date).ToString()
+Write-Host "Started Log Analytic Workspace Configuration: " (Get-Date).ToString()
 
 #Create Log Analytics Workspace if it does not exist
 $location = "uksouth"
@@ -132,9 +132,9 @@ New-AzOperationalInsightsWindowsEventDataSource -ResourceGroupName $monitorRGNam
                                                              -Name "Windows Performance Counter" -Force $true #>
 
 
-Write-Output "Finished Log Analytic Workspace Configuration : " (Get-Date).ToString()                
+Write-Host "Finished Log Analytic Workspace Configuration: " (Get-Date).ToString()                
 
-Write-Output "Started Creation of Action Group at : " (Get-Date).tostring()
+Write-Host "Started Creation of Action Group at: " (Get-Date).tostring()
 
 $actiongGroupEmailList =@()
 #$emailAddressesForAlerts = @("hitesh.kacholiya@gmail.com","aatifsid07@gmail.com")    
@@ -160,7 +160,7 @@ $notifyAdminsVMAlert = Set-AzActionGroup `
 #Create Action Group in memory
 $notifyAdminsVMAlertActionGroup = New-AzActionGroup -ActionGroupId $notifyAdminsVMAlert.Id
 
-Write-Output "Started Creation of Log Analytic Workspace alerts at : " (Get-Date).ToString()
+Write-Host "Started Creation of Log Analytic Workspace alerts at: " (Get-Date).ToString()
 
 #Create log search based alert for system restart events
 $restartQuery = 'Event | where Message has "shutdown" and ParameterXml has "restart" |  project Computer, _ResourceId, UserName, TimeGenerated, Message, EventLog | summarize AggregatedValue= count() by bin(TimeGenerated, 5m)'
@@ -192,9 +192,9 @@ New-AzScheduledQueryRule -Source $shutDownQuerySource -Schedule $schedule -Actio
 $windowSize = New-TimeSpan -Minutes 60
 $frequency = New-TimeSpan -Minutes 60
 
-Write-Output "End Creation of Log Analytic Workspace alerts at : " (Get-Date).ToString()
+Write-Host "End Creation of Log Analytic Workspace alerts at: " (Get-Date).ToString()
 
-Write-Output "Begin Creation of VM alerts at : " (Get-Date).ToString()
+Write-Host "Begin Creation of VM alerts at: " (Get-Date).ToString()
 
 #Creating Log Activity Alerts for Deallocate & Restart VMs
 $adminCondition = New-AzActivityLogAlertCondition -Field 'category' -Equal 'Administrative'
@@ -214,25 +214,6 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
         $subscriptionId = $allSubscriptions[$iSub].Id
         $scope = "/subscriptions/" + $subscriptionId
 
-        # Create VM Power-Off Alert based on Activity Log Signal
-        Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-POWEROFF" `
-        -ResourceGroupName $monitorRGName -Scope $scope `
-        -Action $notifyAdminsVMAlertActionGroup `
-        -Condition $adminCondition, $powerOffCondition -Description "Alert to notify when a virtual machine has been powered off"
-
-        # Create VM Deallocated Alert based on Activity Log Signal
-        Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-DEALLOCATE" `
-        -ResourceGroupName $monitorRGName -Scope $scope `
-        -Action $notifyAdminsVMAlertActionGroup `
-        -Condition $adminCondition, $deallocateCondition -Description "Alert to notify when a virtual machine is deallocated" -ErrorAction Continue
-
-
-        # Create VM Restart Alert based on Activity Log Signal
-        Set-AzActivityLogAlert -Location "Global" -Name "ALERT-VM-RESTART" `
-        -ResourceGroupName $monitorRGName -Scope $scope `
-        -Action $notifyAdminsVMAlertActionGroup `
-        -Condition $adminCondition, $restartCondition -Description "Alert to notify when a virtual machine is restarted" -ErrorAction Continue
-
          # Adds or updates a V2 metric-based alert rule for CPU Utilization             
         <#Add-AzMetricAlertRuleV2 `
         -Name "ALERT-CPU-UTILIZATION" `
@@ -250,19 +231,19 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
         {
             foreach($vm in $vms)
             {
-                Write-Output "Started Alert Configuration for " $vm.Name " at : " (Get-Date).ToString()
+                Write-Host "Started Alert Configuration for " $vm.Name " at : " (Get-Date).ToString()
                 $targetResourceId = (Get-AzResource -Name $vm.Name).ResourceId
                 $resourceGroupName = $vm.ResourceGroupName
 
                 #Enable VM Insights by installing agent and connecting it to Log Analytics Workspace on VM if not already enabled
                 (.\Install-VMInsights.ps1 -WorkspaceRegion $location -WorkspaceId $logAnalyticsWorkspace.CustomerId  -WorkspaceKey $secondaryKey -SubscriptionId $subscriptionId -ResourceGroup $monitorRGName)
                
-                Write-Output "Finished Agent Installation for " $vm.Name " at : " (Get-Date).ToString()
+                Write-Host "Finished Agent Installation for " $vm.Name " at: " (Get-Date).ToString()
             }
         }
         
-        Write-Output "End Creation of VM alerts for " $subscriptionName " : " (Get-Date).ToString()
+        Write-Host "End Creation of VM alerts for " $subscriptionName ": " (Get-Date).ToString()
     }
 }
 
-Write-Output "End of Script at : " (Get-Date).ToString()
+Write-Host "End of Script at: " (Get-Date).ToString()
