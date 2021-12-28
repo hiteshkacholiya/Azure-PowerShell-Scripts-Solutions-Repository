@@ -69,20 +69,19 @@ Write-Output "Started Log Analytic Workspace Configuration : " (Get-Date).ToStri
 
 #Create Log Analytics Workspace if it does not exist
 $location = "uksouth"
-#$workspaceName = "LA-INFRA-DEV-UKS-LTM-01"
+#$workspaceName = "LA-INFRA-DEV-UKS-LTM-04"
 try
 {
    $logAnalyticsWorkspace = Get-AzOperationalInsightsWorkspace -Name $workspaceName -ResourceGroupName $monitorRGName -ErrorAction Stop
 }
 catch
 {
-    New-AzOperationalInsightsWorkspace -Location $location -Name $workspaceName -Sku standalone -ResourceGroupName $monitorRGName
+    $logAnalyticsWorkspace = New-AzOperationalInsightsWorkspace -Location $location -Name $workspaceName -Sku standalone -ResourceGroupName $monitorRGName
     #change SKU based on billing model. For PAYG, only standalone works.
     #$logAnalyticsWorkspace = New-AzOperationalInsightsWorkspace -Location $location -Name $WorkspaceName -Sku standard -ResourceGroupName $monitorRGName
 }
 
 # Get Log Analytic Workspace Keys
-$logAnalyticsWorkspace = Get-AzOperationalInsightsWorkspace -Name $workspaceName -ResourceGroupName $monitorRGName -ErrorAction Stop
 $logAnalayticKeys = Get-AzOperationalInsightsWorkspaceSharedKey -ResourceGroupName $monitorRGName -Name $logAnalyticsWorkspace.Name
 if($logAnalayticKeys -ne $null)
 {
@@ -171,7 +170,8 @@ $schedule = New-AzScheduledQueryRuleSchedule -FrequencyInMinutes 5 -TimeWindowIn
 $restartTriggerCondition = New-AzScheduledQueryRuleTriggerCondition -ThresholdOperator GreaterThan -Threshold 0
 $restartAlertAznsActionGroup = New-AzScheduledQueryRuleAznsActionGroup -ActionGroup $notifyAdminsVMAlertActionGroup.ActionGroupId -EmailSubject "Alert - Azure Virtual Machine Restarted"
 $restartAlertingAction = New-AzScheduledQueryRuleAlertingAction -AznsAction $restartAlertAznsActionGroup -Severity 3 -Trigger $restartTriggerCondition
-New-AzScheduledQueryRule -Location $location -Action $restartAlertingAction -Enabled $true -Description "ALERT-VM-RESTART-LA" -Schedule $schedule -Name "Azure VM Restart Alert" -ResourceGroupName $monitorRGName -Source $restartQuerySource
+#change the name parameter is this is being re-run for any recently deleted LA Workspace. 
+New-AzScheduledQueryRule -Source $restartQuerySource -Schedule $schedule -Action $restartAlertingAction -ResourceGroupName $monitorRGName -Location $location -Name "LA-VM-Restart-Alert-04" -Description "Azure VM Restart Alert" -Enabled $true
 
 #Create log search based alert for system shutdown
 $shutDownQuery = 'Event | where Message has "initiated a shutdown" | summarize Count = count() by bin(TimeGenerated, 5m)'
@@ -179,7 +179,8 @@ $shutDownQuerySource = New-AzScheduledQueryRuleSource -Query $shutDownQuery -Dat
 $shutDownTriggerCondition = New-AzScheduledQueryRuleTriggerCondition -ThresholdOperator GreaterThan -Threshold 0 -MetricTrigger $shutDownMetricTrigger
 $shutDownAlertAznsActionGroup = New-AzScheduledQueryRuleAznsActionGroup -ActionGroup $notifyAdminsVMAlertActionGroup.ActionGroupId -EmailSubject "Alert - Azure Virtual Machine Restarted"
 $shutDownAlertingAction = New-AzScheduledQueryRuleAlertingAction -AznsAction $shutDownAlertAznsActionGroup -Severity 3 -Trigger $shutDownTriggerCondition
-New-AzScheduledQueryRule -Location $location -Action $shutDownAlertingAction -Enabled $true -Description "ALERT-VM-SHUTDOWN-LA" -Schedule $schedule -Name "Azure VM ShutDown Alert" -ResourceGroupName $monitorRGName -Source $shutDownQuerySource
+#change the name parameter is this is being re-run for any recently deleted LA Workspace. 
+New-AzScheduledQueryRule -Source $shutDownQuerySource -Schedule $schedule -Action $shutDownAlertingAction -ResourceGroupName $monitorRGName -Location $location -Name "LA-VM-ShutDown-Alert-04" -Description "Azure VM Shutdown Alert" -Enabled $true
 
 # Creates a local criteria object that can be used to create a new metric alert
 <#$percentageCPUCondition = New-AzMetricAlertRuleV2Criteria `
