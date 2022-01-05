@@ -66,6 +66,7 @@ $allSubscriptions = Get-AzSubscription
 
 if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
 {
+    #Prepare report file
     $currentDirectory = Get-Location
     $filePath = $currentDirectory.Path + "\Azure_Costs_" + (Get-Date).Date.ToString("dd-MMM-yy") + ".csv"
     $title = '"Subscription Name", "Resource Group Name", "Resource Name", "Cost (in GBP)"'
@@ -74,6 +75,7 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
         Add-Content $filePath $title
     }
 
+    #Cost Report for all subscriptions
     for($iSub=0;$iSub -lt $allSubscriptions.Count;$iSub++)
     {
         $currentSubscription = Select-AzSubscription -SubscriptionId $allSubscriptions[$iSub].Id
@@ -104,6 +106,7 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
                                  -and ($resource.ResourceType -ne "Microsoft.Network/networkWatchers") `
                                  -and ($resource.ResourceType -ne "microsoft.operationalInsights/querypacks"))#>
                                 {
+                                    #calculate resource cost for the duration provided
                                     $resourceCost = [math]::Round((Get-AzConsumptionUsageDetail -Expand MeterDetails -ResourceGroup $currentResourceGroup.ResourceGroupName `
                                                 -StartDate $startDate -EndDate $endDate -InstanceName $resource.Name `
                                                 | Measure-Object -Sum PretaxCost | Select-Object -ExpandProperty Sum),2)
@@ -114,6 +117,7 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
                             }
                             catch
                             {
+                                #add blank entry for any exceptions
                                 $addToReport = '"' + $currentSubscriptionName + '","' + $currentResourceGroup.ResourceGroupName + '","' + $resource.Name + '","' + "Cost Not Calculated" + '"'
                                 Add-Content $filePath $addToReport
                                 Write-Host "Exception in calculation of " $resource.Name " for " $currentResourceGroup.ResourceGroupName " at " (Get-Date).ToString()
