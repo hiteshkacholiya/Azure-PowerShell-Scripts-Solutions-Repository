@@ -1,12 +1,13 @@
 <#
     .DESCRIPTION
-        This script creates Azure Defender Audit Policy and assigns it to all subscriptions
+        This script creates Azure Defender DeployIfNotExist Policy and assigns it to all subscriptions
     .NOTES
         AUTHOR: 
-        LAST EDIT: Jan 05, 2022
-    .EXAMPLE
-        \azure-defender-audit-policy-assignment.ps1 -tenantId 'c12c0dae-7c48-46d6-b2fc-bcad5ab377a0'
+        LAST EDIT: Jan 07, 2022
+    .EXAMPLE 
+    .\azure-defender-deployifnotexist-policy-assignment.ps1 -tenantId 'c12c0dae-7c48-46d6-b2fc-bcad5ab377a0'    
 #>
+
 param 
 (
     [Parameter(Mandatory=$true)][string]$tenantId
@@ -18,6 +19,7 @@ param
 Import-Module -Name Az.Resources
 Import-Module -Name Az.Accounts
 Import-Module -Name Az.Monitor
+Import-Module -Name Az.Security
 
 $connectionName = "AzureRunAsConnectionName"
 $WarningPreference = 'SilentlyContinue'
@@ -52,9 +54,18 @@ catch
 #>
 <#-- End Region for Initialize Connection & Import Modules --#>
 
-##Use this for local execution
-
 Connect-AzAccount -TenantId $tenantId
+
+try
+{
+    Write-Host "Trying provider registeration at " (Get-Date).ToString()
+    Register-AzResourceProvider -ProviderNamespace 'Microsoft.Security'
+    Write-Host "Completed provider registeration at " (Get-Date).ToString()    
+}
+catch
+{
+    Write-Host "Error encountered during provider registeration at " (Get-Date).ToString()
+}
 
 # Working on LTM UAT And STAGING Subscriptions
 #$allSubscriptions = Get-AzSubscription | Where-Object { $_.Name -eq "LTM-UATSUB" -or $_.Name -eq "LTM-STAGINGSUB" }
@@ -62,9 +73,11 @@ $allSubscriptions = Get-AzSubscription
 
 if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
 {
-$azureDefenderAuditPolicy = New-AzPolicyDefinition -Name 'AuditAzureDefender' -DisplayName 'Audit Subscription for disabled Azure Defender' -Policy 'AzureDefender-AuditSubscriptions.json'
-$defenderPolicy = Get-AzPolicyDefinition -Name $azureDefenderAuditPolicy.Name
-$allSubscriptions = Get-AzSubscription
+    $azureDefenderDeployIfNotExistPolicy = New-AzPolicyDefinition -Name 'DeployIfNotExistAzureDefender' -DisplayName 'Deploy Azure Defender (if not exist) for Subscriptions' -Policy 'AzureDefender-DeployIfNotExists-Subscriptions.json'
+    $defenderPolicy = Get-AzPolicyDefinition -Name $azureDefenderDeployIfNotExistPolicy.Name
+    $nonComplianceMessages = @(@{Message="Azure Defender is not deployed for subscription"})
+
+    $allSubscriptions = Get-AzSubscription
 
     for($iSub=0;$iSub -lt $allSubscriptions.Count;$iSub++)
     {
@@ -74,7 +87,10 @@ $allSubscriptions = Get-AzSubscription
             $currentSubscriptionName = $currentSubscription.Name
             Write-Host "Assign Policy for " $currentSubscriptionName " at " (Get-Date).ToString()
             $scope = "/subscriptions/" + $allSubscriptions[$iSub].Id
-            New-AzPolicyAssignment -Name 'AzureDefenderPolicyAssignment' -PolicyDefinition $defenderPolicy -Scope $scope
+            
+            New-AzPolicyAssignment -Name 'AzureDefenderDeployIfNotExistPolicyAssignment' -Scope $scope `
+            -PolicyDefinition $defenderPolicy -NonComplianceMessage $nonComplianceMessages -AssignIdentity -Location uksouth
+
             Write-Host "Policy Assigned for " $currentSubscriptionName " at " (Get-Date).ToString()
         }
         catch
