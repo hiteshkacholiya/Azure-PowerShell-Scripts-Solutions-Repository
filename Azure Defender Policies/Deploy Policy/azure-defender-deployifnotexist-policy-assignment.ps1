@@ -77,8 +77,6 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
     $defenderPolicy = Get-AzPolicyDefinition -Name $azureDefenderDeployIfNotExistPolicy.Name
     $nonComplianceMessages = @(@{Message="Azure Defender is not deployed for subscription"})
 
-    $allSubscriptions = Get-AzSubscription
-
     for($iSub=0;$iSub -lt $allSubscriptions.Count;$iSub++)
     {
         try
@@ -88,8 +86,14 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
             Write-Host "Assign Policy for " $currentSubscriptionName " at " (Get-Date).ToString()
             $scope = "/subscriptions/" + $allSubscriptions[$iSub].Id
             
-            New-AzPolicyAssignment -Name 'AzureDefenderDeployIfNotExistPolicyAssignment' -Scope $scope `
+            <#New-AzPolicyAssignment -Name 'AzureDefenderDeployIfNotExistPolicyAssignment' -Scope $scope `
             -PolicyDefinition $defenderPolicy -NonComplianceMessage $nonComplianceMessages -AssignIdentity -Location uksouth
+            #>
+
+            #If not using default values, then uncomment this command & comment the above one.
+             New-AzPolicyAssignment -Name 'AzureDefenderDeployIfNotExistPolicyAssignment' -Scope $scope `
+            -PolicyDefinition $defenderPolicy -PolicyParameter .\InputValues.json  -NonComplianceMessage $nonComplianceMessages -AssignIdentity -Location uksouth
+            
 
             Write-Host "Policy Assigned for " $currentSubscriptionName " at " (Get-Date).ToString()
         }

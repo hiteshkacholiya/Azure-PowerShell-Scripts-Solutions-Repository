@@ -1,0 +1,50 @@
+{
+	"emailSecurityContact":  
+	{
+      		"value": "hitesh.kacholiya@gmail.com"
+    },
+    "phoneSecurityContact": 
+	{
+		"value": "7777777777"
+	},
+    "pricingTierVMs": 
+	{
+		"value": "Free"
+	},
+    "pricingTierSqlServers": 
+	{
+		"value": "Free"
+	},
+    "pricingTierAppServices": 
+	{
+		"value": "Free"
+	},
+    "pricingTierStorageAccounts": 
+	{
+		"value": "Free"
+	},
+    "pricingTierContainerRegistry": 
+	{
+		"value": "Free"
+	},
+	"pricingTierKeyVaults": 
+	{
+		"value": "Free"
+	},
+	"pricingTierSqlServerVirtualMachines": 
+	{
+		"value": "Free"
+	},
+	"pricingTierArm": 
+	{
+		"value": "Free"
+	},
+	"pricingTierDns": 
+	{
+		"value": "Free"
+	},
+	"pricingTierKubernetesService": 
+	{
+		"value": "Free"
+	}
+}
