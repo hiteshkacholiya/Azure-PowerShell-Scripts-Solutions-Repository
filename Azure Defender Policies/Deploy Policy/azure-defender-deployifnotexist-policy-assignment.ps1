@@ -5,7 +5,7 @@
         AUTHOR: 
         LAST EDIT: Jan 07, 2022
     .EXAMPLE 
-    .\azure-defender-deployifnotexist-policy-assignment.ps1 -tenantId 'c12c0dae-7c48-46d6-b2fc-bcad5ab377a0'    
+    .\azure-defender-deployifnotexist-policy-assignment.ps1 -tenantId 'your-tenant-id'    
 #>
 
 param 
@@ -20,12 +20,12 @@ Import-Module -Name Az.Resources
 Import-Module -Name Az.Accounts
 Import-Module -Name Az.Monitor
 Import-Module -Name Az.Security
+<#
 
 $connectionName = "AzureRunAsConnectionName"
 $WarningPreference = 'SilentlyContinue'
 Write-Host "Started Script at : " (Get-Date).tostring()
 
-<#
 try
 {
     # Get the connection "AzureRunAsConnection "
