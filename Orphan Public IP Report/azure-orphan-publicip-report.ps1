@@ -4,7 +4,7 @@
         The report will be sent as an attachment in the mail to the user
     .NOTES
         AUTHOR: 
-        LAST EDIT: Jan 07, 2022
+        LAST EDIT: Jan 13, 2022
     .EXAMPLE 
     For Deleting: .\azure-orphan-publicip-report.ps1 -tenantId 'your-tenant-id' -DeletePublicIP 'Yes'
     For Reporting: .\azure-orphan-publicip-report.ps1 -tenantId 'your-tenant-id'
@@ -12,7 +12,8 @@
 
 Param(
 	[Parameter(Mandatory=$true)][string]$tenantId,
-    [Parameter(Mandatory=$false)][string]$DeletePublicIP="No"
+    [Parameter(Mandatory=$false)][string]$DeletePublicIP="No",
+    [Parameter(Mandatory=$true)][string[]]$emailAddressesForReport
 )
 
 
@@ -189,5 +190,29 @@ catch
 }
     
 <#-- End Region for Orphan Public IP Report--#> 
+
+<# -- Send email with report as attachment --#>
+$generationTime = (Get-Date).ToString("MMMdyyyy")
+$mailBody = "Hello, <br/><br/> Please find attached the Azure Orphan PublicIP Address Report generated for Azure Tenant Id <b> $tenantId </b> at $generationTime. <br/><br/> <p style=""color:red""> This is a system generated email. Please do not reply to this email.</p><br/>Regards,<br/>OFLM Azure Team"
+$mailAttachment = New-Object System.Net.Mail.Attachment($filePath)
+$mailMessage = new-object Net.Mail.MailMessage
+$mailMessage.From = "Senthicloud@gmail.com"
+#$emailAddressesForReport -join ","
+$mailMessage.Subject = "Azure Orphan PublicIP Report - " + $tenantId + " - " + $generationTime
+$mailMessage.Body = $mailBody
+$mailMessage.IsBodyHtml = $true
+$mailMessage.Attachments.Add($mailAttachment)
+
+foreach($toMailAddress in $emailAddressesForReport)
+{
+    $mailMessage.To.Add($toMailAddress)
+}
+
+$smtpServer = "smtp.office365.com"
+$smtpClient = New-Object Net.Mail.SmtpClient($smtpServer, 587)
+$smtpClient.EnableSsl = $true
+$smtpClient.UseDefaultCredentials = $false
+$smtpClient.Credentials = New-Object System.Net.NetworkCredential("Hitesh@arltechnology.onmicrosoft.com", "Freelance@2021")
+$smtpClient.Send($mailMessage)
 
 Write-Host "Ended Orphan Public IP Deletion Script at : " (Get-Date).ToString()

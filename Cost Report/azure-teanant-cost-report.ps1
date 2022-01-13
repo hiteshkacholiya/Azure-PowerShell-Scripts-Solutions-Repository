@@ -3,7 +3,7 @@
         This script generates the cost report for all resources in Azure Tenant
     .NOTES
         AUTHOR: 
-        LAST EDIT: Dec 28, 2021
+        LAST EDIT: Jan 12, 2022
     .EXAMPLE 
         .\azure-teanant-cost-report.ps1 -tenantId "your-tenant-id" -startDate "11/10/2021" -endDate "12/9/2021" -emailAddressesForReport "abc@def.com","uvw@xyz.com"
 #>
@@ -130,5 +130,50 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
         }
     }
 }
+
+<# -- Send email with report as attachment --#>
+$generationTime = (Get-Date).ToString("MMMdyyyy")
+$mailSubject = "Azure Cost Report - " + $tenantId + " - " + $generationTime
+$mailBody = "Hello, <br/><br/> Please find attached the Azure Cost Report generated for Azure Tenant Id <b> $tenantId </b> at $generationTime. <br/><br/> <p style=""color:red""> This is a system generated email. Please do not reply to this email.</p><br/>Regards,<br/>OFLM Azure Team"
+$mailAttachment = New-Object System.Net.Mail.Attachment($filePath)
+$mailMessage = new-object Net.Mail.MailMessage
+$mailMessage.From = "Senthicloud@gmail.com"
+#$emailAddressesForReport -join ","
+$mailMessage.Subject = "Azure Cost Report - " + $tenantId + " - " + $generationTime
+$mailMessage.Body = $mailBody
+$mailMessage.IsBodyHtml = $true
+$mailMessage.Attachments.Add($mailAttachment)
+
+foreach($toMailAddress in $emailAddressesForReport)
+{
+    $mailMessage.To.Add($toMailAddress)
+}
+
+$smtpServer = "smtp.office365.com"
+$smtpClient = New-Object Net.Mail.SmtpClient($smtpServer, 587)
+$smtpClient.EnableSsl = $true
+$smtpClient.UseDefaultCredentials = $false
+$smtpClient.Credentials = New-Object System.Net.NetworkCredential("Hitesh@arltechnology.onmicrosoft.com", "Freelance@2021")
+$smtpClient.Send($mailMessage)
+
+<#
+$credential = Get-Credential
+
+## Define the Send-MailMessage parameters
+$mailParams = @{
+    SmtpServer                 = 'smtp.office365.com'
+    Port                       = '587' # or '25' if not using TLS
+    UseSSL                     = $true ## or not if using non-TLS
+    Credential                 = $credential
+    From                       = 'sender@yourdomain.com'
+    To                         = 'recipient@yourdomain.com', 'recipient@NotYourDomain.com'
+    Subject                    = "SMTP Client Submission - $(Get-Date -Format g)"
+    Body                       = 'This is a test email using SMTP Client Submission'
+    DeliveryNotificationOption = 'OnFailure', 'OnSuccess'
+}
+
+## Send the message
+Send-MailMessage @mailParams
+#>
 
 Write-Host "End of Script at : " (Get-Date).ToString()
