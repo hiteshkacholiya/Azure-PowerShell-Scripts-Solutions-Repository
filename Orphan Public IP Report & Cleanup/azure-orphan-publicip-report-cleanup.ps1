@@ -4,16 +4,21 @@
         The report will be sent as an attachment in the mail to the user
     .NOTES
         AUTHOR: 
-        LAST EDIT: Jan 13, 2022
+        LAST EDIT: Jan 20, 2022
     .EXAMPLE 
-    For Deleting: .\azure-orphan-publicip-report-cleanup.ps1 -tenantId 'your-tenant-id' -emailAddressesForReport 'your-email-addresses-comma-separated' -deletePublicIP 'Yes'
-    For Reporting: .\azure-orphan-publicip-report-cleanup.ps1 -tenantId 'your-tenant-id'-emailAddressesForReport 'your-email-addresses-comma-separated'
+    For Deleting & Sending Mail: .\azure-orphan-publicip-report-cleanup.ps1 -tenantId 'your-tenant-id'  -deletePublicIP 'Yes' -sendMail 'Yes' -fromAddress 'your-from-email-address' -toAddressesForReport 'your-email-addresses-comma-separated' -smtpUser 'your-smtp-user' -smtpPassword 'your-smtp-password'
+    For Reporting: .\azure-orphan-publicip-report-cleanup.ps1 -tenantId 'your-tenant-id'-toAddressesForReport 'your-email-addresses-comma-separated'
+    For Reporting & Sending Mail: .\azure-orphan-publicip-report-cleanup.ps1 -tenantId 'your-tenant-id'-toAddressesForReport 'your-email-addresses-comma-separated' -sendMail 'Yes' -fromAddress 'your-from-email-address' -toAddressesForReport 'your-email-addresses-comma-separated' -smtpUser 'your-smtp-user' -smtpPassword 'your-smtp-password'
 #>
 
 Param(
 	[Parameter(Mandatory=$true)][string]$tenantId,
     [Parameter(Mandatory=$false)][string]$deletePublicIP="No",
-    [Parameter(Mandatory=$true)][string[]]$emailAddressesForReport
+    [Parameter(Mandatory=$false)][string]$sendMail="No",
+    [Parameter(Mandatory=$false)][string]$fromAddress="",
+    [Parameter(Mandatory=$false)][string[]]$toAddressesForReport,
+    [Parameter(Mandatory=$false)][string]$smtpUser="",
+    [Parameter(Mandatory=$false)][string]$smtpPassword=""
 )
 
 
@@ -192,27 +197,37 @@ catch
 <#-- End Region for Orphan Public IP Report--#> 
 
 <# -- Send email with report as attachment --#>
-$generationTime = (Get-Date).ToString("MMMdyyyy")
-$mailBody = "Hello, <br/><br/> Please find attached the Azure Orphan PublicIP Address Report generated for Azure Tenant Id <b> $tenantId </b> at $generationTime. <br/><br/> <p style=""color:red""> This is a system generated email. Please do not reply to this email.</p><br/>Regards,<br/>OFLM Azure Team"
-$mailAttachment = New-Object System.Net.Mail.Attachment($filePath)
-$mailMessage = new-object Net.Mail.MailMessage
-$mailMessage.From = "Senthicloud@gmail.com"
-#$emailAddressesForReport -join ","
-$mailMessage.Subject = "Azure Orphan PublicIP Report - " + $tenantId + " - " + $generationTime
-$mailMessage.Body = $mailBody
-$mailMessage.IsBodyHtml = $true
-$mailMessage.Attachments.Add($mailAttachment)
-
-foreach($toMailAddress in $emailAddressesForReport)
+if($sendMail.ToLower().Equals('yes'))
 {
-    $mailMessage.To.Add($toMailAddress)
-}
+    try
+    {
+        $generationTime = (Get-Date).ToString("MMMdyyyy")
+        $mailBody = "Hello, <br/><br/> Please find attached the Azure Orphan PublicIP Address Report generated for Azure Tenant Id <b> $tenantId </b> at $generationTime. <br/><br/> <p style=""color:red""> This is a system generated email. Please do not reply to this email.</p><br/>Regards,<br/>OFLM Azure Team"
+        $mailAttachment = New-Object System.Net.Mail.Attachment($filePath)
+        $mailMessage = new-object Net.Mail.MailMessage
+        $mailMessage.From = $fromAddress
+        #$toAddressesForReport -join ","
+        $mailMessage.Subject = "Azure Orphan PublicIP Report - " + $tenantId + " - " + $generationTime
+        $mailMessage.Body = $mailBody
+        $mailMessage.IsBodyHtml = $true
+        $mailMessage.Attachments.Add($mailAttachment)
 
-$smtpServer = "smtp.office365.com"
-$smtpClient = New-Object Net.Mail.SmtpClient($smtpServer, 587)
-$smtpClient.EnableSsl = $true
-$smtpClient.UseDefaultCredentials = $false
-$smtpClient.Credentials = New-Object System.Net.NetworkCredential("Hitesh@arltechnology.onmicrosoft.com", "Freelance@2021")
-$smtpClient.Send($mailMessage)
+        foreach($toMailAddress in $toAddressesForReport)
+        {
+            $mailMessage.To.Add($toMailAddress)
+        }
+
+        $smtpServer = "smtp.office365.com"
+        $smtpClient = New-Object Net.Mail.SmtpClient($smtpServer, 587)
+        $smtpClient.EnableSsl = $true
+        $smtpClient.UseDefaultCredentials = $false
+        $smtpClient.Credentials = New-Object System.Net.NetworkCredential($smtpUser, $smtpPassword)
+        $smtpClient.Send($mailMessage)
+    }
+    catch
+    {
+        Write-Host "Exception encountered while trying to send mail"
+    }
+}
 
 Write-Host "Ended Orphan Public IP Deletion Script at : " (Get-Date).ToString()

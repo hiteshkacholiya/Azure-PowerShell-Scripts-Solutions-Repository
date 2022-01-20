@@ -6,14 +6,20 @@
         AUTHOR: 
         LAST EDIT: Jan 20, 2022
     .EXAMPLE 
-    For Deleting: .\azure-orphan-disk-report-cleanup.ps1 -tenantId 'your-tenant-id' -emailAddressesForReport 'your-email-addresses-comma-separated' -deleteOrphanDisks 'Yes'
-    For Reporting: .\azure-orphan-disk-report-cleanup.ps1 -tenantId 'your-tenant-id'-emailAddressesForReport 'your-email-addresses-comma-separated'
+    For Deleting & Sending Mail: .\azure-orphan-disk-report-cleanup.ps1 -tenantId 'your-tenant-id' -toAddressesForReport 'your-email-addresses-comma-separated' -sendMail 'Yes' -deleteOrphanDisks 'Yes' -smtpUser 'your-smtp-user' -smtpPassword 'your-smtp-password'
+    For Reporting: .\azure-orphan-disk-report-cleanup.ps1 -tenantId 'your-tenant-id'-toAddressesForReport 'your-email-addresses-comma-separated'
+    For Reporting & Sending Mail: .\azure-orphan-disk-report-cleanup.ps1 -tenantId 'your-tenant-id'-toAddressesForReport 'your-email-addresses-comma-separated' -sendMail 'Yes' -smtpUser 'your-smtp-user' -smtpPassword 'your-smtp-password'
 #>
 
-Param(
+Param
+(
 	[Parameter(Mandatory=$true)][string]$tenantId,
     [Parameter(Mandatory=$false)][string]$deleteOrphanDisks="No",
-    [Parameter(Mandatory=$true)][string[]]$emailAddressesForReport
+    [Parameter(Mandatory=$false)][string]$sendMail="No",
+    [Parameter(Mandatory=$false)][string]$fromAddress="",
+    [Parameter(Mandatory=$false)][string[]]$toAddressesForReport,
+    [Parameter(Mandatory=$false)][string]$smtpUser="",
+    [Parameter(Mandatory=$false)][string]$smtpPassword=""
 )
 
 ## Use this for Automation account only
@@ -109,7 +115,7 @@ $fileName = "$((Get-Date).ToString("yyyy-MM-dd_HHmmss"))_OrphanDiskReport.csv"
 $filePath = $fileName
 
 Write-Host "Started Orphan Disk Report Script at : " (Get-Date).tostring()
-# ----- Generate report for Orphan Disks across subscriptions-----
+<#-- Generate report for Orphan Disks across subscriptions--#>
 try
 {        
     #Getting all subscriptions
@@ -123,6 +129,7 @@ try
         Select-AzSubscription -SubscriptionName $subName
                 
         Write-Host "Checking for Unattached Managed Disks of Subscription - $subName"
+        #Get-AzDisk | Select Name, ResourceGroupName,DiskState, ManagedBy 
         $managedDisks = @(Get-AzDisk | Where-Object { $PSItem.ManagedBy -eq $Null})
                 
         if($managedDisks.Count -gt 0) 
@@ -163,20 +170,22 @@ try
 	            {
                     try
                     {
-                        #code to do a disk cleanup/delete
-                        $deletedDisk = "Yes"
-			            $orphanDisk_details_temp | Add-Member -MemberType NoteProperty -Name "Deleted" -Value $deletedDisk
-                        Write-Host "Deleted Orphan Public IP " $ip.Name " at : " (Get-Date).ToString()
+                        #Delete Disk
+                        $disk | Remove-AzDisk -Force
+			            $orphanDisk_details_temp | Add-Member -MemberType NoteProperty -Name "Deleted" -Value $deleteOrphanDisks
+			            $orphanDisk_details_temp | Add-Member -MemberType NoteProperty -Name "Time Deleted" -Value (Get-Date).ToString()
+                        Write-Host "Deleted Orphan Disk " $disk.Name " with id " $disk.Id " at : " (Get-Date).ToString()
                     }
                     catch
                     {
-                        $deletedDisk = "No"
-			            $orphanDisk_details_temp | Add-Member -MemberType NoteProperty -Name "Deleted" -Value $deletedDisk
+			            $orphanDisk_details_temp | Add-Member -MemberType NoteProperty -Name "Deleted" -Value "No"
+			            $orphanDisk_details_temp | Add-Member -MemberType NoteProperty -Name "Time Deleted" -Value $Null
                     }
 	            }
                 else
                 {
 		            $orphanDisk_details_temp | Add-Member -MemberType NoteProperty -Name "Deleted" -Value $deleteOrphanDisks
+			        $orphanDisk_details_temp | Add-Member -MemberType NoteProperty -Name "Time Deleted" -Value $Null
                 }
                             
                 $orphanDisk_details = $orphanDisk_details + $orphanDisk_details_temp            
@@ -188,8 +197,8 @@ try
         {
             Write-Host "No Orphaned Managed Disks found" 
         }
-
-        #Checking unattached unmanaged disks across subscriptions
+        <#-- Unmanaged Disks Zone --#>
+        #Comment if there are no unmanaged disks in tenant
         Write-Host "Checking for Unattached Unmanaged Disks of Subscription - $subName"
         try
         {
@@ -292,17 +301,20 @@ try
                                                 #code to do a disk cleanup/delete
                                                 $deletedBlob = "Yes"
 			                                    $orphanDisk_details_temp | Add-Member -MemberType NoteProperty -Name "Deleted" -Value $deletedBlob
+			                                    $orphanDisk_details_temp | Add-Member -MemberType NoteProperty -Name "Time Deleted" -Value (Get-Date).ToString()
                                                 Write-Host "Deleted Orphan Public IP " $ip.Name " at : " (Get-Date).ToString()
                                             }
                                             catch
                                             {
                                                 $deletedBlob = "No"
 			                                    $orphanDisk_details_temp | Add-Member -MemberType NoteProperty -Name "Deleted" -Value $deletedBlob
+			                                    $orphanDisk_details_temp | Add-Member -MemberType NoteProperty -Name "Time Deleted" -Value $Null
                                             }
 	                                    }
                                         else
                                         {
 		                                    $orphanDisk_details_temp | Add-Member -MemberType NoteProperty -Name "Deleted" -Value $deletedBlob
+			                                $orphanDisk_details_temp | Add-Member -MemberType NoteProperty -Name "Time Deleted" -Value $Null
                                         }
                             
                                         $orphanDisk_details = $orphanDisk_details + $orphanDisk_details_temp
@@ -336,7 +348,39 @@ try
     $PSPersistPreference = $False	
 
     <#-- Start region for emailing report--#> 
-    
+    if($sendMail.ToLower().Equals("yes"))
+    {
+        try
+        {
+            $generationTime = (Get-Date).ToString("MMMdyyyy")
+            $mailBody = "Hello, <br/><br/> Please find attached the Azure Orphan Disk Report generated for Azure Tenant Id <b> $tenantId </b> at $generationTime. <br/><br/> <p style=""color:red""> This is a system generated email. Please do not reply to this email.</p><br/>Regards,<br/>OFLM Azure Team"
+            $mailAttachment = New-Object System.Net.Mail.Attachment($filePath)
+            $mailMessage = new-object Net.Mail.MailMessage
+            $mailMessage.From = $fromAddress
+            #$toAddressesForReport -join ","
+            $mailMessage.Subject = "Azure Orphan Disk Report - " + $tenantId + " - " + $generationTime
+            $mailMessage.Body = $mailBody
+            $mailMessage.IsBodyHtml = $true
+            $mailMessage.Attachments.Add($mailAttachment)
+
+            foreach($toMailAddress in $toAddressesForReport)
+            {
+                $mailMessage.To.Add($toMailAddress)
+            }
+
+            $smtpServer = "smtp.office365.com"
+            $smtpClient = New-Object Net.Mail.SmtpClient($smtpServer, 587)
+            $smtpClient.EnableSsl = $true
+            $smtpClient.UseDefaultCredentials = $false
+            $smtpClient.Credentials = New-Object System.Net.NetworkCredential($smtpUser, $smtpPassword)
+            $smtpClient.Send($mailMessage)
+        }
+        catch
+        {
+            Write-Host "Exception encountered while trying to send mail"
+            Write-Host $_.Exception.Message
+        } 
+    }
     <#-- End Region for emailing report --#> 
 }
 catch
