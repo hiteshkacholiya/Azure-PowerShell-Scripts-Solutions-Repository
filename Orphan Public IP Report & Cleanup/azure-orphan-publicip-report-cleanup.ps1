@@ -1,18 +1,18 @@
 ﻿<#
     .DESCRIPTION
-        This Script will delete and generate the report of all the Orphan Public IP's in each subscription
+        This Script will generate report and/or delete all the Orphan Public IP's in each subscription
         The report will be sent as an attachment in the mail to the user
     .NOTES
         AUTHOR: 
         LAST EDIT: Jan 13, 2022
     .EXAMPLE 
-    For Deleting: .\azure-orphan-publicip-report.ps1 -tenantId 'your-tenant-id' -DeletePublicIP 'Yes'
-    For Reporting: .\azure-orphan-publicip-report.ps1 -tenantId 'your-tenant-id'
+    For Deleting: .\azure-orphan-publicip-report-cleanup.ps1 -tenantId 'your-tenant-id' -emailAddressesForReport 'your-email-addresses-comma-separated' -deletePublicIP 'Yes'
+    For Reporting: .\azure-orphan-publicip-report-cleanup.ps1 -tenantId 'your-tenant-id'-emailAddressesForReport 'your-email-addresses-comma-separated'
 #>
 
 Param(
 	[Parameter(Mandatory=$true)][string]$tenantId,
-    [Parameter(Mandatory=$false)][string]$DeletePublicIP="No",
+    [Parameter(Mandatory=$false)][string]$deletePublicIP="No",
     [Parameter(Mandatory=$true)][string[]]$emailAddressesForReport
 )
 
@@ -51,7 +51,7 @@ catch
 <#-- End Region for Initialize Connection & Import Modules --#>
 Connect-AzAccount -TenantId $tenantId
 
-$fileName = "$((Get-Date).ToString("yyyy-MM-dd_HHmmss"))_OrphanPublicIP.csv"
+$fileName = "$((Get-Date).ToString("yyyy-MM-dd_HHmmss"))_OrphanPublicIPReport.csv"
 $filePath = $fileName
 
 Write-Host "Started Orphan Public IP report Script at : " (Get-Date).tostring()
@@ -103,7 +103,7 @@ try
 							        $publicip_details_temp | Add-Member -MemberType NoteProperty -Name "ResourceGroupName" -Value $ip.ResourceGroupName 
 							        $publicip_details_temp | Add-Member -MemberType NoteProperty -Name "PublicIPName" -Value $ip.Name 
 									
-							        if($DeletePublicIP.ToLower().Equals("yes"))
+							        if($deletePublicIP.ToLower().Equals("yes"))
 							        {
                                         try
                                         {
@@ -155,7 +155,7 @@ try
 				$publicip_details_temp | Add-Member -MemberType NoteProperty -Name "ResourceGroupName" -Value $publicIP.ResourceGroupName 
 				$publicip_details_temp | Add-Member -MemberType NoteProperty -Name "PublicIPName" -Value $publicIP.Name 
 									
-				if($DeletePublicIP.ToLower().Equals("yes"))
+				if($deletePublicIP.ToLower().Equals("yes"))
 				{
                     try
                     {
