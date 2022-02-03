@@ -134,12 +134,12 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
 <# -- Send email with report as attachment --#>
 $generationTime = (Get-Date).ToString("MMMdyyyy")
 $mailSubject = "Azure Cost Report - " + $tenantId + " - " + $generationTime
-$mailBody = "Hello, <br/><br/> Please find attached the Azure Cost Report generated for Azure Tenant Id <b> $tenantId </b> at $generationTime. <br/><br/> <p style=""color:red""> This is a system generated email. Please do not reply to this email.</p><br/>Regards,<br/>OFLM Azure Team"
+$mailBody = "Hello, <br/><br/> Please find attached the Azure Network Report generated for Azure Tenant Id <b> $tenantId </b> at $generationTime. <br/><br/> <p style=""color:red""> This is a system generated email. Please do not reply to this email.</p><br/>Regards,<br/>OFLM Azure Team"
 $mailAttachment = New-Object System.Net.Mail.Attachment($filePath)
 $mailMessage = new-object Net.Mail.MailMessage
-$mailMessage.From = "Senthicloud@gmail.com"
+$mailMessage.From = "abc@gmail.com"
 #$emailAddressesForReport -join ","
-$mailMessage.Subject = "Azure Cost Report - " + $tenantId + " - " + $generationTime
+$mailMessage.Subject = "Azure Network Report - " + $tenantId + " - " + $generationTime
 $mailMessage.Body = $mailBody
 $mailMessage.IsBodyHtml = $true
 $mailMessage.Attachments.Add($mailAttachment)
@@ -153,7 +153,7 @@ $smtpServer = "smtp.office365.com"
 $smtpClient = New-Object Net.Mail.SmtpClient($smtpServer, 587)
 $smtpClient.EnableSsl = $true
 $smtpClient.UseDefaultCredentials = $false
-$smtpClient.Credentials = New-Object System.Net.NetworkCredential("Hitesh@arltechnology.onmicrosoft.com", "Freelance@2021")
+$smtpClient.Credentials = New-Object System.Net.NetworkCredential("abc.onmicrosoft.com", "abcdefg")
 $smtpClient.Send($mailMessage)
 
 <#
