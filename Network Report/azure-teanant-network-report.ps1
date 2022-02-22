@@ -3,9 +3,9 @@
         This script generates the cost report for all resources in Azure Tenant
     .NOTES
         AUTHOR: 
-        LAST EDIT: Feb 02, 2022
+        LAST EDIT: Feb 07, 2022
     .EXAMPLE 
-        .\azure-teanant-network-report.ps1 -tenantId "your-tenant-id" -startDate "11/10/2021" -endDate "12/9/2021" -emailAddressesForReport "abc@def.com","uvw@xyz.com"
+        .\azure-teanant-network-report.ps1 -tenantId "your-tenant-id" -emailAddressesForReport "abc@def.com","uvw@xyz.com"
 #>
 
 param 
@@ -60,19 +60,27 @@ Connect-AzAccount -TenantId $tenantId
 
 # Working on LTM UAT And STAGING Subscriptions
 #$allSubscriptions = Get-AzSubscription | Where-Object { $_.Name -eq "LTM-UATSUB" -or $_.Name -eq "LTM-STAGINGSUB" }
+
+
 $allSubscriptions = Get-AzSubscription
 
 if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
 {
     #Prepare report file
     $currentDirectory = Get-Location
-    $filePathPeering = $currentDirectory.Path + "\Azure_Network_Peering" + (Get-Date).Date.ToString("dd-MMM-yy") + ".csv"
-    $filePath = $currentDirectory.Path + "\Azure_Network_" + (Get-Date).Date.ToString("dd-MMM-yy") + ".csv" 
-    $titlePeering = '"VNet Name", "Resource Group Name", "Peering Name", "Peering Sync Level", "Peering Sync State", "Allow Forwarded Traffic", "Allow Gateway Transit", "Allow Virtual Network Access", "Use Remote Gateways",  "Peered Remote Address Space"'
-    $title = '"VNet Name", "Resource Group Name", "VNET Address Prefix", "VNET Virtual Network Peerings", "Subnet Name", "Subnet Address Prefix", "Subnet NSG", "Subnet Route Table", "Subnet Private Endpoints",  "Subnet Service Endpoints"'
+    $filePathPeering = $currentDirectory.Path + "\Azure_Network_Peerings_" + (Get-Date).Date.ToString("dd-MMM-yy") + ".csv"
+    $filePath = $currentDirectory.Path + "\Azure_Network_Details_" + (Get-Date).Date.ToString("dd-MMM-yy") + ".csv" 
+    $titlePeering = '"Source VNet, Resource Group Name, Peering Name, Destination VNet, Peering Sync Level, Peering Sync State, Allow Forwarded Traffic, Allow Gateway Transit, Allow Virtual Network Access, Use Remote Gateways, Peered Remote Address Space"'
+    $title = '"VNet Name, Resource Group Name, VNET Address Prefix, Subnet Name, Subnet Address Prefix, Subnet NSG, Subnet Route Table, Subnet Private Endpoints, Subnet Service Endpoints"'
+    
     if(!(Test-Path $filePath))
     {
         Add-Content $filePath $title
+    }
+
+    if(!(Test-Path $filePathPeering))
+    {
+        Add-Content $filePathPeering $titlePeering
     }
 
     #Cost Report for all subscriptions
@@ -90,9 +98,7 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
                 {
                     foreach($peering in $vnet.VirtualNetworkPeerings)
                     {
-                        $addPeeringToReport = '"' + $peering.Name + '","' + $peering.PeeringSyncLevel + '","' + $peering.PeeringState + '","' 
-                        + $peering.AllowForwardedTraffic + '","' + $peering.AllowGatewayTransit + '","' + $peering.AllowVirtualNetworkAccess 
-                        + '","' + $peering.UseRemoteGateways + '","' + $peering.PeeredRemoteAddressSpace.AddressPrefixes
+                        $addPeeringToReport = '"' + $vnet.Name + '","' + $vnet.ResourceGroupName + '","' + $peering.Name + '","' + $peering.RemoteVirtualNetwork.Id.Substring($peering.RemoteVirtualNetwork.Id.LastIndexOf('/')+1) + '","' + $peering.PeeringSyncLevel + '","' + $peering.PeeringState + '","' + $peering.AllowForwardedTraffic + '","' + $peering.AllowGatewayTransit + '","' + $peering.AllowVirtualNetworkAccess + '","' + $peering.UseRemoteGateways + '","' + $peering.PeeredRemoteAddressSpace.AddressPrefixes + '"'
                         Add-Content $filePathPeering $addPeeringToReport
                     }
                 }
@@ -101,7 +107,28 @@ if(($allSubscriptions -ne $null) -and ($allSubscriptions.Count -gt 0))
                 {
                     foreach($subnet in $vnet.Subnets)
                     {
-                        $addToReport = '"' + $vnet.Name + '","' + $vnet.ResourceGroupName + '","' + $vnet.AddressSpace.AddressPrefixes + '","' + $vnet.VirtualNetworkPeerings + '","' + $subnet.Name + '","' + $subnet.AddressPrefix + '","' + $subnet.NetworkSecurityGroup + '","' + $subnet.RouteTable + '","' +  $subnet.PrivateEndpoints + '","' + $subnet.ServiceEndpoints + '"'
+                        try
+                        {
+                            $addToReport = '"' + $vnet.Name + '","' + $vnet.ResourceGroupName + '","' + $vnet.AddressSpace.AddressPrefixes + '","' + $subnet.Name + '","' + $subnet.AddressPrefix + '","' + $subnet.NetworkSecurityGroup.Id.Substring($subnet.NetworkSecurityGroup.Id.lastIndexOf('/') + 1) + '","' + $subnet.RouteTable.Id.Substring($subnet.RouteTable.Id.LastIndexOf('/') + 1) + '","' +  $subnet.PrivateEndpoints.Id.Substring($subnet.PrivateEndpoints.Id.LastIndexOf('/') + 1) + '","' + $subnet.ServiceEndpoints.Service + '"'  
+                        }
+                        catch
+                        {
+                            try
+                            {
+                                $addToReport = '"' + $vnet.Name + '","' + $vnet.ResourceGroupName + '","' + $vnet.AddressSpace.AddressPrefixes + '","' + $subnet.Name + '","' + $subnet.AddressPrefix + '","' + $subnet.NetworkSecurityGroup.Name + '","' + $subnet.RouteTable.Id.Substring($subnet.RouteTable.Id.LastIndexOf('/') + 1) + '","' + $subnet.PrivateEndpoints.Id.Substring($subnet.PrivateEndpoints.Id.LastIndexOf('/') + 1) + '","' + $subnet.ServiceEndpoints.Service + '"'
+                            }
+                            catch
+                            {
+                                try
+                                {
+                                    $addToReport = '"' + $vnet.Name + '","' + $vnet.ResourceGroupName + '","' + $vnet.AddressSpace.AddressPrefixes + '","' + $subnet.Name + '","' + $subnet.AddressPrefix + '","' + $subnet.NetworkSecurityGroup.Name + '","' + $subnet.RouteTable.Id.Substring($subnet.RouteTable.Id.LastIndexOf('/') + 1) + '","' +  $subnet.PrivateEndpoints + '","' + $subnet.ServiceEndpoints.Service + '"'
+                                }
+                                catch
+                                {
+                                    $addToReport = '"' + $vnet.Name + '","' + $vnet.ResourceGroupName + '","' + $vnet.AddressSpace.AddressPrefixes + '","' + $subnet.Name + '","' + $subnet.AddressPrefix + '","' + $subnet.NetworkSecurityGroup.Name + '","' + $subnet.RouteTable.Id + '","' +  $subnet.PrivateEndpoints + '","' + $subnet.ServiceEndpoints.Service + '"'                                    
+                                }
+                            }
+                        }
                         Add-Content $filePath $addToReport
                     }
                 }
