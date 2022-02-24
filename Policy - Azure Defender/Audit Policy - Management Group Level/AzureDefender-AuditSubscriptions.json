@@ -1,0 +1,40 @@
+{
+  "properties": {
+    "displayName": "AzureDefeneder-AuditSubscriptions",
+    "policyType": "Custom",
+    "mode": "All",
+    "description": "Audits all subsriptions for Azure Defender enabled/disabled status",
+    "parameters": {
+    },
+    "policyRule": {
+      "if": {
+        "allOf": [
+          {
+            "field": "type",
+            "equals": "Microsoft.Resources/subscriptions"
+          }
+        ]
+      },
+      "then": {
+        "effect": "auditIfNotExists",
+        "details": {
+            "type": "Microsoft.Security/pricings",
+            "existenceCondition": {
+                "allOf": [{
+                        "field": "Microsoft.Security/pricings/pricingTier",
+                        "equals": "Standard"
+                    },
+                    {
+                        "field": "type",
+                        "equals": "Microsoft.Security/pricings"
+                    }
+                ]
+            }
+        }
+    }
+    }
+  },
+  "id": "/providers/Microsoft.Management/managementGroups/RB/providers/Microsoft.Authorization/policyDefinitions/AzureDefeneder-AuditSubscriptions",
+  "type": "Microsoft.Authorization/policyDefinitions",
+  "name": "AzureDefeneder-AuditSubscriptions"
+}
