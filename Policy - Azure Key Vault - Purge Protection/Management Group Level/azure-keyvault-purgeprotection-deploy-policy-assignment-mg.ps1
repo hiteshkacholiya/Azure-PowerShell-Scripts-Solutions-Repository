@@ -4,7 +4,7 @@
     .NOTES
         PRE-REQUISITES: Account used to execute this script needs to have Owner/User Access Administrator access along with Management Group Reader/Contributor
         AUTHOR: 
-        LAST EDIT: Feb 21, 2022
+        LAST EDIT: Feb 22, 2022
     .EXAMPLE 
     .\azure-keyvault-purgeprotection-deploy-policy-assignment-mg.ps1 -tenantId 'your-tenant-id'    
 #>
@@ -59,10 +59,11 @@ Connect-AzAccount -TenantId $tenantId
 try
 {
     # Get Management Group Object
-    $managementGroupId = "gitcollab-root-mg"
+    $managementGroupId = "your-management-group-name"
     $managementGroup = Get-AzManagementGroup -GroupId $managementGroupId 
     $akvPurgeProtectionPolicy = New-AzPolicyDefinition -Name 'Audit-KeyVault-PurgeProtection-Enabled' -DisplayName 'Azure Key Vaults - Purge Protection should be Enabled' -Policy 'AzureKeyVault-PurgeProtection-Enabled-Audit-Deny-Disabled.json' -ManagementGroupName $managementGroup.Name
-    $akvPurgeProtectionPolicyDefinition = Get-AzPolicyDefinition -Id $akvPurgeProtectionPolicy.ResourceId
+    #$akvPurgeProtectionPolicyDefinition = Get-AzPolicyDefinition -Id $akvPurgeProtectionPolicy.ResourceId
+    $akvPurgeProtectionPolicyDefinition = Get-AzPolicyDefinition -Name $akvPurgeProtectionPolicy.Name -ManagementGroupName $managementGroup.Name
     $nonComplianceMessages = @(@{Message="Purge Protection should be Enabled on Azure Key Vaults"})
     $scope = "/providers/Microsoft.Management/managementGroups/"+ $managementGroupId
     New-AzPolicyAssignment -Name 'AKV-Purge-Enabled' -PolicyDefinition $akvPurgeProtectionPolicyDefinition -Scope $scope
