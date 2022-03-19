@@ -1,0 +1,33 @@
+{
+    "properties": 
+    {
+        "displayName": "Storage Account soft delete should be enabled",
+        "policyType": "Custom",
+        "mode": "All",
+        "description": "Azure Storage Accounts should be configured with soft deletes for Blobs, FileShares and Containers",
+        "metadata": {
+          "version": "1.0",
+          "category": "Storage"
+        },
+    "policyRule": {
+        "if": {
+            "field": "type",
+            "equals": "Microsoft.Storage/storageAccounts"
+        },
+        "then": {
+            "effect": "auditIfNotExists",
+            "details": {
+                "type": "Microsoft.Storage/storageAccounts/blobServices",
+                "roleDefinitionIds": [
+                    "/providers/microsoft.authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c"
+                ],
+                "existenceCondition": {
+                    "field": "Microsoft.Storage/storageAccounts/blobServices/deleteRetentionPolicy.enabled",
+                    "equals": "true"
+                }
+            }
+        }
+    },
+    "parameters": {}
+    }
+}

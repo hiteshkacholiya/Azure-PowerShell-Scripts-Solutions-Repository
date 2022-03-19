@@ -28,7 +28,7 @@
         "equals": "Microsoft.Storage/storageAccounts"
       },
       "then": {
-        "effect": "Disabled",
+        "effect": "[parameters('effect')]",
         "details": {
           "type": "Microsoft.Storage/storageAccounts/privateEndpointConnections",
           "existenceCondition": {
@@ -39,7 +39,7 @@
       }
     }
   },
-  "id": "/providers/Microsoft.Authorization/policyDefinitions/SA-PrivateLink-Required",
+  "id": "/providers/Microsoft.Authorization/policyDefinitions/SA-PrivateLink-Mandatory",
   "type": "Microsoft.Authorization/policyDefinitions",
-  "name": "SA-PrivateLink-Required"
+  "name": "SA-PrivateLink-Mandatory"
 }

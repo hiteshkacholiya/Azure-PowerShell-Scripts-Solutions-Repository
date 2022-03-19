@@ -1,0 +1,44 @@
+{
+  "properties": {
+    "displayName": "Storage account public access should be disallowed",
+    "policyType": "Custom",
+    "mode": "All",
+    "description": "Anonymous public read access to containers and blobs in Azure Storage is a convenient way to share data but might present security risks. To prevent data breaches caused by undesired anonymous access, Microsoft recommends preventing public access to a storage account unless your scenario requires it.",
+    "metadata": {
+      "version": "1.0",
+      "category": "Storage"
+    },
+    "policyRule": {
+      "if": {
+        "allOf": [
+          {
+            "field": "type",
+            "equals": "Microsoft.Storage/storageAccounts/blobServices"
+          },
+          {
+            "anyof": [
+              {
+                "equals": "false",
+                "field": "Microsoft.Storage/storageAccounts/blobServices/default.deleteRetentionPolicy.enabled"
+              },
+              {
+                "equals": "false",
+                "field": "Microsoft.Storage/storageAccounts/blobServices/default.containerDeleteRetentionPolicy.enabled"
+              },
+              {
+                "equals": "false",
+                "field": "Microsoft.Storage/storageAccounts/blobServices/default.containerDeleteRetentionPolicy.enabled"
+              }
+            ]
+          }
+        ]
+      },
+      "then": {
+        "effect": "deny"
+      }
+    }
+  },
+  "id": "/providers/Microsoft.Authorization/policyDefinitions/test-sa-soft-delete-1",
+  "type": "Microsoft.Authorization/policyDefinitions",
+  "name": "test-sa-soft-delete-1"
+}

@@ -1,0 +1,40 @@
+{
+  "properties": {
+    "displayName": "Storage accounts should have soft deletes enabled on Blobs and Containers",
+    "policyType": "Custom",
+    "mode": "All",
+    "description": "Azure Storage Accounts should have soft deletes enabled and configured for blobs & containers. This will prevent accidental data loss. Retention period of 7 days is standard.",
+    "metadata": {
+      "version": "1.0",
+      "category": "Storage"
+    },
+    "policyRule": {
+      "if": {
+        "allOf": [
+          {
+            "field": "type",
+            "equals": "Microsoft.Storage/storageAccounts/blobServices"
+          },
+          {
+            "anyof": [
+              {
+                "equals": "false",
+                "field": "Microsoft.Storage/storageAccounts/blobServices/default.deleteRetentionPolicy.enabled"
+              },
+              {
+                "equals": "false",
+                "field": "Microsoft.Storage/storageAccounts/blobServices/default.containerDeleteRetentionPolicy.enabled"
+              }
+            ]
+          }
+        ]
+      },
+      "then": {
+        "effect": "deny"
+      }
+    }
+  },
+  "id": "/providers/Microsoft.Authorization/policyDefinitions/SA-SoftDelete-Deny",
+  "type": "Microsoft.Authorization/policyDefinitions",
+  "name": "SA-SoftDelete-Deny"
+}
