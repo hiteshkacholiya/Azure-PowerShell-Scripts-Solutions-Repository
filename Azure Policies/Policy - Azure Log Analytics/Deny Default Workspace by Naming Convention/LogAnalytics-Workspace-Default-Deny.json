@@ -1,0 +1,33 @@
+{
+  "properties": 
+  {
+    "displayName": "Deny creating Log Analytic Default Workspaces",
+    "description": "This policy denies creation of log analytic default workspaces using standard default workspace naming conventions.",
+    "parameters": {},
+    "policyType": "Custom",
+    "metadata": {
+      "category": "Log Analytics"
+    },
+    "policyRule": {
+      "if": {
+        "allOf": [
+          {
+            "field": "type",
+            "equals": "Microsoft.OperationalInsights/workspaces"
+          },
+          {
+            "allOf": [
+              {
+                "field": "name",
+                "like": "DefaultWorkspace-*"
+              }
+            ]
+          }
+        ]
+      },
+      "then": {
+        "effect": "deny"
+      }
+    }
+  }
+}
