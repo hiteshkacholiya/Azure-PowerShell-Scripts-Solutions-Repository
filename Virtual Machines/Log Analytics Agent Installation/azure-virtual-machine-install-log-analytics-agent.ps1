@@ -77,64 +77,65 @@ foreach ($sub in $subscriptions)
     {
       foreach ($vm in $VMs) 
       {
-        $lin_extension_name = "OMSAgentForLinux"
-        $win_extension_name = "MicrosoftMonitoringAgent"
-        $get_extension = Get-AzVMExtension -ResourceGroupName $vm.ResourceGroupName -VMName $vm.Name | Where-Object { $_.Name -eq $win_extension_name -or $_.Name -eq $lin_extension_name } -ErrorAction Continue
+        if($vm.ProvisioningState.ToLower() -eq "succeeded")
+        {
+            $lin_extension_name = "OMSAgentForLinux"
+            $win_extension_name = "MicrosoftMonitoringAgent"
+            $get_extension = Get-AzVMExtension -ResourceGroupName $vm.ResourceGroupName -VMName $vm.Name | Where-Object { $_.Name -eq $win_extension_name -or $_.Name -eq $lin_extension_name } -ErrorAction Continue
    
-        if ($get_extension -eq $null) 
-        {
-            #Enable VM Insights by installing agent and connecting it to Log Analytics Workspace on VM if not already enabled
-            (.\Install-VMInsights.ps1 -WorkspaceRegion $vm.Location -WorkspaceId $workspaceId  -WorkspaceKey $workspaceKey -SubscriptionId $sub.Name -ResourceGroup $vm.ResourceGroupName)
-        }
-        else
-        {
-          $workspace_id = ($get_extension.PublicSettings | ConvertFrom-Json).workspaceId
-
-          if ($workspace_id -ne $workspaceId ) 
-          {
-            if ($vm.StorageProfile.OsDisk.OsType.ToLower() -eq "windows") 
+            if ($get_extension -eq $null) 
             {
-              Remove-AzVMExtension `
-                -ResourceGroupName $vm.ResourceGroupName `
-                -VMName $vm.Name `
-                -Name $win_extension_name `
-                -Confirm:$false `
-                -Force:$true
+                #Enable VM Insights by installing agent and connecting it to Log Analytics Workspace on VM if not already enabled
+                (.\Install-VMInsights.ps1 -WorkspaceRegion $vm.Location -WorkspaceId $workspaceId  -WorkspaceKey $workspaceKey -SubscriptionId $sub.Name -ResourceGroup $vm.ResourceGroupName)
+            }
+            else
+            {
+              $workspace_id = ($get_extension.PublicSettings | ConvertFrom-Json).workspaceId
+
+              if ($workspace_id -ne $workspaceId ) 
+              {
+                if ($vm.StorageProfile.OsDisk.OsType.ToString().ToLower() -eq "windows") 
+                {
+                    Remove-AzVMExtension `
+                    -ResourceGroupName $vm.ResourceGroupName `
+                    -VMName $vm.Name `
+                    -Name $win_extension_name `
+                    -Confirm:$false `
+                    -Force:$true
         
-              Set-AzVMExtension `
-                -ResourceGroupName $vm.ResourceGroupName `
-                -VMName $vm.Name
-              -ExtensionType "Microsoft.EnterpriseCloud.Monitoring.MicrosoftMonitoringAgent" `
-                -ExtensionName "MicrosoftMonitoringAgent" `
-                -Publisher "Microsoft.EnterpriseCloud.Monitoring" `
-                -TypeHandlerVersion 1.0 `
-                `
-                -Settings $settings `
-                -ProtectedSettings $protectedSettings `
-                -Location $vm.Location
-            }
-            else 
-            {
-              Remove-AzVMExtension `
-                -ResourceGroupName $vm.ResourceGroupName `
-                -VMName $vm.Name `
-                -Name $lin_extension_name `
-                -Confirm:$false `
-                -Force:$true
+                    Set-AzVMExtension `
+                    -ResourceGroupName $vm.ResourceGroupName `
+                    -VMName $vm.Name `
+                    -ExtensionType "Microsoft.EnterpriseCloud.Monitoring.MicrosoftMonitoringAgent" `
+                    -ExtensionName "MicrosoftMonitoringAgent" `
+                    -Publisher "Microsoft.EnterpriseCloud.Monitoring" `
+                    -TypeHandlerVersion 1.0 `
+                    -Settings $settings `
+                    -ProtectedSettings $protectedSettings `
+                    -Location $vm.Location
+                }
+                else 
+                {
+                    Remove-AzVMExtension `
+                    -ResourceGroupName $vm.ResourceGroupName `
+                    -VMName $vm.Name `
+                    -Name $lin_extension_name `
+                    -Confirm:$false `
+                    -Force:$true
 
-              Set-AzVMExtension `
-                -ResourceGroupName $vm.ResourceGroupName`
-                -VMName $vm.Name
-              -ExtensionType "Microsoft.EnterpriseCloud.Monitoring.OmsAgentForLinux" `
-                -ExtensionName "OMSAgentForLinux" `
-                -Publisher "Microsoft.EnterpriseCloud.Monitoring" `
-                -TypeHandlerVersion 1.0 `
-               `
-                -Settings $settings `
-                -ProtectedSettings $protectedSettings `
-                -Location $vm.Location
+                    Set-AzVMExtension `
+                    -ResourceGroupName $vm.ResourceGroupName`
+                    -VMName $vm.Name `
+                    -ExtensionType "Microsoft.EnterpriseCloud.Monitoring.OmsAgentForLinux" `
+                    -ExtensionName "OMSAgentForLinux" `
+                    -Publisher "Microsoft.EnterpriseCloud.Monitoring" `
+                    -TypeHandlerVersion 1.0 `
+                    -Settings $settings `
+                    -ProtectedSettings $protectedSettings `
+                    -Location $vm.Location
+                }
+              }
             }
-          }
         }
       }
     }
