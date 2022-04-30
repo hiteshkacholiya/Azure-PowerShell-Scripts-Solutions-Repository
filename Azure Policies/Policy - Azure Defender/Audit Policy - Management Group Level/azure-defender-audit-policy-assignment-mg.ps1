@@ -58,7 +58,7 @@ catch
 try
 {
     $managementGroupName = "Your-Management-Group-Name"
-    $azureDefenderAuditPolicy = New-AzPolicyDefinition -Name 'AuditAzureDefender' -DisplayName 'Audit Subscription for disabled Azure Defender' -Policy 'AzureDefender-AuditSubscriptions.json' -ManagementGroupName "Tenant Root Group"
+    $azureDefenderAuditPolicy = New-AzPolicyDefinition -Name 'AuditAzureDefender' -DisplayName 'Audit Subscription for disabled Azure Defender' -Policy 'AzureDefender-AuditSubscriptions.json' -ManagementGroupName $managementGroupName
     $defenderPolicy = Get-AzPolicyDefinition -Name $azureDefenderAuditPolicy.Name
     $managementGroupId = Get-AzManagementGroup -GroupName $managementGroupName
     $scope = "/providers/Microsoft.Management/managementGroups/"+ $managementGroupId
