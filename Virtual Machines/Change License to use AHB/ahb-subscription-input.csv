@@ -1,0 +1,29 @@
+﻿Name,Type
+Access to Azure Active Directory,NA
+AZ-CDP-NP-SBC,Non-Prod
+AZ-CDP-PD-SBC,Prod
+AZ-EDP-NP-WU2-SBC,Non-Prod
+AZ-EDP-PD-SBC,Prod
+AZ-ESS-PD-CUS-SBC,Prod
+AZ-ESS-PD-WCU-SBC,Prod
+AZ-ESS-PD-WU2-SBC,Prod
+AZ-SAP-DR-WCU-SBC,DR
+AZ-SAP-NP-CUS-SBC,Non-Prod
+AZ-SAP-NP-WU2-SBC,Non-Prod
+AZ-SAP-PD-CUS-SBC,Prod
+AZ-SAP-PD-WU2-SBC,Prod
+DevOPS,Prod
+FWM Dev,Non-Prod
+FWM PD,Prod
+FWM QA,Non-Prod
+FWM Stage/Training,Non-Prod
+HARMON ML POC,Non-Prod
+NWN BI,Prod
+NWN BI Sandbox,Non-Prod
+NWN IT&S Digital Portal BX,Non-Prod
+NWN IT&S Digital Portal DV,Non-Prod
+NWN IT&S Digital Portal PD,Prod
+NWN IT&S Digital Portal QA,Non-Prod
+NWN IT&S Digital Portal ST,Non-Prod
+Visual Studio Enterprise Subscription,NA
+Visual Studio Enterprise Subscription,NA
